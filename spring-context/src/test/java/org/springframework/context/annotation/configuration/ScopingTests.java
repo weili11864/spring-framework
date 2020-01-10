@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,23 +23,24 @@ import java.lang.annotation.Target;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.junit.After;
-import static org.junit.Assert.*;
-import org.junit.Before;
-import org.junit.Test;
-import org.springframework.tests.sample.beans.ITestBean;
-import org.springframework.tests.sample.beans.TestBean;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.aop.scope.ScopedObject;
 import org.springframework.beans.factory.ObjectFactory;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.beans.testfixture.beans.ITestBean;
+import org.springframework.beans.testfixture.beans.TestBean;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.ConfigurationClassPostProcessor;
 import org.springframework.context.annotation.Scope;
 import org.springframework.context.annotation.ScopedProxyMode;
 import org.springframework.context.support.GenericApplicationContext;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests that scopes are properly supported by using a custom Scope implementations
@@ -58,32 +59,31 @@ public class ScopingTests {
 
 	private GenericApplicationContext ctx;
 
-	@Before
+
+	@BeforeEach
 	public void setUp() throws Exception {
 		customScope = new CustomScope();
-		ctx = createContext(customScope, ScopedConfigurationClass.class);
+		ctx = createContext(ScopedConfigurationClass.class);
 	}
 
-	@After
+	@AfterEach
 	public void tearDown() throws Exception {
 		if (ctx != null) {
 			ctx.close();
 		}
-		ctx = null;
-		customScope = null;
 	}
 
-	private GenericApplicationContext createContext(org.springframework.beans.factory.config.Scope customScope, Class<?> configClass) {
+	private GenericApplicationContext createContext(Class<?> configClass) {
 		DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
 		if (customScope != null) {
 			beanFactory.registerScope(SCOPE, customScope);
 		}
 		beanFactory.registerBeanDefinition("config", new RootBeanDefinition(configClass));
-		GenericApplicationContext ctx = new GenericApplicationContext(beanFactory);
-		ctx.addBeanFactoryPostProcessor(new ConfigurationClassPostProcessor());
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(beanFactory);
 		ctx.refresh();
 		return ctx;
 	}
+
 
 	@Test
 	public void testScopeOnClasses() throws Exception {
@@ -95,21 +95,55 @@ public class ScopingTests {
 		genericTestScope("scopedInterface");
 	}
 
+	private void genericTestScope(String beanName) throws Exception {
+		String message = "scope is ignored";
+		Object bean1 = ctx.getBean(beanName);
+		Object bean2 = ctx.getBean(beanName);
+
+		assertThat(bean2).as(message).isSameAs(bean1);
+
+		Object bean3 = ctx.getBean(beanName);
+
+		assertThat(bean3).as(message).isSameAs(bean1);
+
+		// make the scope create a new object
+		customScope.createNewScope = true;
+
+		Object newBean1 = ctx.getBean(beanName);
+		assertThat(newBean1).as(message).isNotSameAs(bean1);
+
+		Object sameBean1 = ctx.getBean(beanName);
+
+		assertThat(sameBean1).as(message).isSameAs(newBean1);
+
+		// make the scope create a new object
+		customScope.createNewScope = true;
+
+		Object newBean2 = ctx.getBean(beanName);
+		assertThat(newBean2).as(message).isNotSameAs(newBean1);
+
+		// make the scope create a new object .. again
+		customScope.createNewScope = true;
+
+		Object newBean3 = ctx.getBean(beanName);
+		assertThat(newBean3).as(message).isNotSameAs(newBean2);
+	}
+
 	@Test
 	public void testSameScopeOnDifferentBeans() throws Exception {
 		Object beanAInScope = ctx.getBean("scopedClass");
 		Object beanBInScope = ctx.getBean("scopedInterface");
 
-		assertNotSame(beanAInScope, beanBInScope);
+		assertThat(beanBInScope).isNotSameAs(beanAInScope);
 
 		customScope.createNewScope = true;
 
 		Object newBeanAInScope = ctx.getBean("scopedClass");
 		Object newBeanBInScope = ctx.getBean("scopedInterface");
 
-		assertNotSame(newBeanAInScope, newBeanBInScope);
-		assertNotSame(newBeanAInScope, beanAInScope);
-		assertNotSame(newBeanBInScope, beanBInScope);
+		assertThat(newBeanBInScope).isNotSameAs(newBeanAInScope);
+		assertThat(beanAInScope).isNotSameAs(newBeanAInScope);
+		assertThat(beanBInScope).isNotSameAs(newBeanBInScope);
 	}
 
 	@Test
@@ -119,26 +153,28 @@ public class ScopingTests {
 		// get hidden bean
 		Object bean = ctx.getBean("scopedTarget." + beanName);
 
-		assertFalse(bean instanceof ScopedObject);
+		boolean condition = bean instanceof ScopedObject;
+		assertThat(condition).isFalse();
 	}
 
 	@Test
 	public void testScopedProxyConfiguration() throws Exception {
 		TestBean singleton = (TestBean) ctx.getBean("singletonWithScopedInterfaceDep");
 		ITestBean spouse = singleton.getSpouse();
-		assertTrue("scoped bean is not wrapped by the scoped-proxy", spouse instanceof ScopedObject);
+		boolean condition = spouse instanceof ScopedObject;
+		assertThat(condition).as("scoped bean is not wrapped by the scoped-proxy").isTrue();
 
 		String beanName = "scopedProxyInterface";
 
 		String scopedBeanName = "scopedTarget." + beanName;
 
 		// get hidden bean
-		assertEquals(flag, spouse.getName());
+		assertThat(spouse.getName()).isEqualTo(flag);
 
 		ITestBean spouseFromBF = (ITestBean) ctx.getBean(scopedBeanName);
-		assertEquals(spouse.getName(), spouseFromBF.getName());
+		assertThat(spouseFromBF.getName()).isEqualTo(spouse.getName());
 		// the scope proxy has kicked in
-		assertNotSame(spouse, spouseFromBF);
+		assertThat(spouseFromBF).isNotSameAs(spouse);
 
 		// create a new bean
 		customScope.createNewScope = true;
@@ -146,33 +182,32 @@ public class ScopingTests {
 		// get the bean again from the BF
 		spouseFromBF = (ITestBean) ctx.getBean(scopedBeanName);
 		// make sure the name has been updated
-		assertSame(spouse.getName(), spouseFromBF.getName());
-		assertNotSame(spouse, spouseFromBF);
+		assertThat(spouseFromBF.getName()).isSameAs(spouse.getName());
+		assertThat(spouseFromBF).isNotSameAs(spouse);
 
 		// get the bean again
 		spouseFromBF = (ITestBean) ctx.getBean(scopedBeanName);
-		assertSame(spouse.getName(), spouseFromBF.getName());
+		assertThat(spouseFromBF.getName()).isSameAs(spouse.getName());
 	}
-
 
 	@Test
 	public void testScopedProxyConfigurationWithClasses() throws Exception {
-
 		TestBean singleton = (TestBean) ctx.getBean("singletonWithScopedClassDep");
 		ITestBean spouse = singleton.getSpouse();
-		assertTrue("scoped bean is not wrapped by the scoped-proxy", spouse instanceof ScopedObject);
+		boolean condition = spouse instanceof ScopedObject;
+		assertThat(condition).as("scoped bean is not wrapped by the scoped-proxy").isTrue();
 
 		String beanName = "scopedProxyClass";
 
 		String scopedBeanName = "scopedTarget." + beanName;
 
 		// get hidden bean
-		assertEquals(flag, spouse.getName());
+		assertThat(spouse.getName()).isEqualTo(flag);
 
 		TestBean spouseFromBF = (TestBean) ctx.getBean(scopedBeanName);
-		assertEquals(spouse.getName(), spouseFromBF.getName());
+		assertThat(spouseFromBF.getName()).isEqualTo(spouse.getName());
 		// the scope proxy has kicked in
-		assertNotSame(spouse, spouseFromBF);
+		assertThat(spouseFromBF).isNotSameAs(spouse);
 
 		// create a new bean
 		customScope.createNewScope = true;
@@ -181,71 +216,24 @@ public class ScopingTests {
 		// get the bean again from the BF
 		spouseFromBF = (TestBean) ctx.getBean(scopedBeanName);
 		// make sure the name has been updated
-		assertSame(spouse.getName(), spouseFromBF.getName());
-		assertNotSame(spouse, spouseFromBF);
+		assertThat(spouseFromBF.getName()).isSameAs(spouse.getName());
+		assertThat(spouseFromBF).isNotSameAs(spouse);
 
 		// get the bean again
 		spouseFromBF = (TestBean) ctx.getBean(scopedBeanName);
-		assertSame(spouse.getName(), spouseFromBF.getName());
+		assertThat(spouseFromBF.getName()).isSameAs(spouse.getName());
 	}
 
-
-	@Test
-	public void testScopedConfigurationBeanDefinitionCount() throws Exception {
-		// count the beans
-		// 6 @Beans + 1 Configuration + 2 scoped proxy + 1 importRegistry + 1 enhanced config post processor
-		assertEquals(11, ctx.getBeanDefinitionCount());
-	}
-
-//	/**
-//	 * SJC-254 caught a regression in handling scoped proxies starting in 1.0 m4.
-//	 * The ScopedProxyFactoryBean object was having its scope set to that of its delegate
-//	 * whereas it should have remained singleton.
-//	 */
-//	@Test
-//	public void sjc254() {
-//		JavaConfigWebApplicationContext ctx = new JavaConfigWebApplicationContext();
-//		ctx.setConfigLocations(new String[] { ScopeTestConfiguration.class.getName() });
-//		ctx.refresh();
-//
-//		// should be fine
-//		ctx.getBean(Bar.class);
-//
-//		boolean threw = false;
-//		try {
-//			ctx.getBean(Foo.class);
-//		} catch (BeanCreationException ex) {
-//			if(ex.getCause() instanceof IllegalStateException) {
-//				threw = true;
-//			}
-//		}
-//		assertTrue(threw);
-//	}
-
-	@Configuration
-	static class ScopeTestConfiguration {
-
-		@Bean
-		@Scope(value="session", proxyMode=ScopedProxyMode.INTERFACES)
-		public Foo foo() {
-			return new Foo();
-		}
-
-		@Bean
-		public Bar bar() {
-			return new Bar(foo());
-		}
-	}
 
 	static class Foo {
+
 		public Foo() {
-			//System.out.println("created foo: " + this.getClass().getName());
 		}
 
 		public void doSomething() {
-			//System.out.println("interesting: " + this);
 		}
 	}
+
 
 	static class Bar {
 
@@ -253,55 +241,23 @@ public class ScopingTests {
 
 		public Bar(Foo foo) {
 			this.foo = foo;
-			//System.out.println("created bar: " + this);
 		}
 
 		public Foo getFoo() {
 			return foo;
 		}
-
 	}
 
-	private void genericTestScope(String beanName) throws Exception {
-		String message = "scope is ignored";
-		Object bean1 = ctx.getBean(beanName);
-		Object bean2 = ctx.getBean(beanName);
-
-		assertSame(message, bean1, bean2);
-
-		Object bean3 = ctx.getBean(beanName);
-
-		assertSame(message, bean1, bean3);
-
-		// make the scope create a new object
-		customScope.createNewScope = true;
-
-		Object newBean1 = ctx.getBean(beanName);
-		assertNotSame(message, bean1, newBean1);
-
-		Object sameBean1 = ctx.getBean(beanName);
-
-		assertSame(message, newBean1, sameBean1);
-
-		// make the scope create a new object
-		customScope.createNewScope = true;
-
-		Object newBean2 = ctx.getBean(beanName);
-		assertNotSame(message, newBean1, newBean2);
-
-		// make the scope create a new object .. again
-		customScope.createNewScope = true;
-
-		Object newBean3 = ctx.getBean(beanName);
-		assertNotSame(message, newBean2, newBean3);
-	}
 
 	@Configuration
 	public static class InvalidProxyOnPredefinedScopesConfiguration {
 
 		@Bean @Scope(proxyMode=ScopedProxyMode.INTERFACES)
-		public Object invalidProxyOnPredefinedScopes() { return new Object(); }
+		public Object invalidProxyOnPredefinedScopes() {
+			return new Object();
+		}
 	}
+
 
 	@Configuration
 	public static class ScopedConfigurationClass {
@@ -377,7 +333,7 @@ public class ScopingTests {
 
 		public boolean createNewScope = true;
 
-		private Map<String, Object> beans = new HashMap<String, Object>();
+		private Map<String, Object> beans = new HashMap<>();
 
 		@Override
 		public Object get(String name, ObjectFactory<?> objectFactory) {
@@ -404,7 +360,7 @@ public class ScopingTests {
 
 		@Override
 		public void registerDestructionCallback(String name, Runnable callback) {
-			// do nothing
+			throw new IllegalStateException("Not supposed to be called");
 		}
 
 		@Override

@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,25 +21,24 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.Test;
+
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.jdbc.LobRetrievalFailureException;
 import org.springframework.jdbc.support.lob.LobCreator;
 import org.springframework.jdbc.support.lob.LobHandler;
 
-import static org.junit.Assert.*;
-import static org.mockito.BDDMockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * @author Alef Arendsen
  */
 public class LobSupportTests {
-
-	@Rule
-	public ExpectedException thrown = ExpectedException.none();
 
 	@Test
 	public void testCreatingPreparedStatementCallback() throws SQLException {
@@ -65,8 +64,8 @@ public class LobSupportTests {
 			}
 		};
 
-		assertEquals(new Integer(3), psc.doInPreparedStatement(ps));
-		assertTrue(svc.b);
+		assertThat(psc.doInPreparedStatement(ps)).isEqualTo(Integer.valueOf(3));
+		assertThat(svc.b).isTrue();
 		verify(creator).close();
 		verify(handler).getLobCreator();
 		verify(ps).executeUpdate();
@@ -75,21 +74,17 @@ public class LobSupportTests {
 	@Test
 	public void testAbstractLobStreamingResultSetExtractorNoRows() throws SQLException {
 		ResultSet rset = mock(ResultSet.class);
-		AbstractLobStreamingResultSetExtractor lobRse = getResultSetExtractor(false);
-		thrown.expect(IncorrectResultSizeDataAccessException.class);
-		try {
-			lobRse.extractData(rset);
-		}
-		finally {
-			verify(rset).next();
-		}
+		AbstractLobStreamingResultSetExtractor<Void> lobRse = getResultSetExtractor(false);
+		assertThatExceptionOfType(IncorrectResultSizeDataAccessException.class).isThrownBy(() ->
+				lobRse.extractData(rset));
+		verify(rset).next();
 	}
 
 	@Test
 	public void testAbstractLobStreamingResultSetExtractorOneRow() throws SQLException {
 		ResultSet rset = mock(ResultSet.class);
 		given(rset.next()).willReturn(true, false);
-		AbstractLobStreamingResultSetExtractor lobRse = getResultSetExtractor(false);
+		AbstractLobStreamingResultSetExtractor<Void> lobRse = getResultSetExtractor(false);
 		lobRse.extractData(rset);
 		verify(rset).clearWarnings();
 	}
@@ -99,14 +94,10 @@ public class LobSupportTests {
 			throws SQLException {
 		ResultSet rset = mock(ResultSet.class);
 		given(rset.next()).willReturn(true, true, false);
-		AbstractLobStreamingResultSetExtractor lobRse = getResultSetExtractor(false);
-		thrown.expect(IncorrectResultSizeDataAccessException.class);
-		try {
-			lobRse.extractData(rset);
-		}
-		finally {
-			verify(rset).clearWarnings();
-		}
+		AbstractLobStreamingResultSetExtractor<Void> lobRse = getResultSetExtractor(false);
+		assertThatExceptionOfType(IncorrectResultSizeDataAccessException.class).isThrownBy(() ->
+				lobRse.extractData(rset));
+		verify(rset).clearWarnings();
 	}
 
 	@Test
@@ -114,13 +105,13 @@ public class LobSupportTests {
 			throws SQLException {
 		ResultSet rset = mock(ResultSet.class);
 		given(rset.next()).willReturn(true);
-		AbstractLobStreamingResultSetExtractor lobRse = getResultSetExtractor(true);
-		thrown.expect(LobRetrievalFailureException.class);
-		lobRse.extractData(rset);
+		AbstractLobStreamingResultSetExtractor<Void> lobRse = getResultSetExtractor(true);
+		assertThatExceptionOfType(LobRetrievalFailureException.class).isThrownBy(() ->
+				lobRse.extractData(rset));
 	}
 
-	private AbstractLobStreamingResultSetExtractor getResultSetExtractor(final boolean ex) {
-		AbstractLobStreamingResultSetExtractor lobRse = new AbstractLobStreamingResultSetExtractor() {
+	private AbstractLobStreamingResultSetExtractor<Void> getResultSetExtractor(final boolean ex) {
+		AbstractLobStreamingResultSetExtractor<Void> lobRse = new AbstractLobStreamingResultSetExtractor<Void>() {
 
 			@Override
 			protected void streamData(ResultSet rs) throws SQLException, IOException {

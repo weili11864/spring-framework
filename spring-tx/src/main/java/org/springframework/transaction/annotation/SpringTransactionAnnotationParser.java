@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,8 +19,12 @@ package org.springframework.transaction.annotation;
 import java.io.Serializable;
 import java.lang.reflect.AnnotatedElement;
 import java.util.ArrayList;
+import java.util.List;
 
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.lang.Nullable;
 import org.springframework.transaction.interceptor.NoRollbackRuleAttribute;
 import org.springframework.transaction.interceptor.RollbackRuleAttribute;
 import org.springframework.transaction.interceptor.RuleBasedTransactionAttribute;
@@ -36,10 +40,17 @@ import org.springframework.transaction.interceptor.TransactionAttribute;
 public class SpringTransactionAnnotationParser implements TransactionAnnotationParser, Serializable {
 
 	@Override
-	public TransactionAttribute parseTransactionAnnotation(AnnotatedElement ae) {
-		Transactional ann = AnnotationUtils.getAnnotation(ae, Transactional.class);
-		if (ann != null) {
-			return parseTransactionAnnotation(ann);
+	public boolean isCandidateClass(Class<?> targetClass) {
+		return AnnotationUtils.isCandidateClass(targetClass, Transactional.class);
+	}
+
+	@Override
+	@Nullable
+	public TransactionAttribute parseTransactionAnnotation(AnnotatedElement element) {
+		AnnotationAttributes attributes = AnnotatedElementUtils.findMergedAnnotationAttributes(
+				element, Transactional.class, false, false);
+		if (attributes != null) {
+			return parseTransactionAnnotation(attributes);
 		}
 		else {
 			return null;
@@ -47,39 +58,41 @@ public class SpringTransactionAnnotationParser implements TransactionAnnotationP
 	}
 
 	public TransactionAttribute parseTransactionAnnotation(Transactional ann) {
+		return parseTransactionAnnotation(AnnotationUtils.getAnnotationAttributes(ann, false, false));
+	}
+
+	protected TransactionAttribute parseTransactionAnnotation(AnnotationAttributes attributes) {
 		RuleBasedTransactionAttribute rbta = new RuleBasedTransactionAttribute();
-		rbta.setPropagationBehavior(ann.propagation().value());
-		rbta.setIsolationLevel(ann.isolation().value());
-		rbta.setTimeout(ann.timeout());
-		rbta.setReadOnly(ann.readOnly());
-		rbta.setQualifier(ann.value());
-		ArrayList<RollbackRuleAttribute> rollBackRules = new ArrayList<RollbackRuleAttribute>();
-		Class[] rbf = ann.rollbackFor();
-		for (Class rbRule : rbf) {
-			RollbackRuleAttribute rule = new RollbackRuleAttribute(rbRule);
-			rollBackRules.add(rule);
+
+		Propagation propagation = attributes.getEnum("propagation");
+		rbta.setPropagationBehavior(propagation.value());
+		Isolation isolation = attributes.getEnum("isolation");
+		rbta.setIsolationLevel(isolation.value());
+		rbta.setTimeout(attributes.getNumber("timeout").intValue());
+		rbta.setReadOnly(attributes.getBoolean("readOnly"));
+		rbta.setQualifier(attributes.getString("value"));
+
+		List<RollbackRuleAttribute> rollbackRules = new ArrayList<>();
+		for (Class<?> rbRule : attributes.getClassArray("rollbackFor")) {
+			rollbackRules.add(new RollbackRuleAttribute(rbRule));
 		}
-		String[] rbfc = ann.rollbackForClassName();
-		for (String rbRule : rbfc) {
-			RollbackRuleAttribute rule = new RollbackRuleAttribute(rbRule);
-			rollBackRules.add(rule);
+		for (String rbRule : attributes.getStringArray("rollbackForClassName")) {
+			rollbackRules.add(new RollbackRuleAttribute(rbRule));
 		}
-		Class[] nrbf = ann.noRollbackFor();
-		for (Class rbRule : nrbf) {
-			NoRollbackRuleAttribute rule = new NoRollbackRuleAttribute(rbRule);
-			rollBackRules.add(rule);
+		for (Class<?> rbRule : attributes.getClassArray("noRollbackFor")) {
+			rollbackRules.add(new NoRollbackRuleAttribute(rbRule));
 		}
-		String[] nrbfc = ann.noRollbackForClassName();
-		for (String rbRule : nrbfc) {
-			NoRollbackRuleAttribute rule = new NoRollbackRuleAttribute(rbRule);
-			rollBackRules.add(rule);
+		for (String rbRule : attributes.getStringArray("noRollbackForClassName")) {
+			rollbackRules.add(new NoRollbackRuleAttribute(rbRule));
 		}
-		rbta.getRollbackRules().addAll(rollBackRules);
+		rbta.setRollbackRules(rollbackRules);
+
 		return rbta;
 	}
 
+
 	@Override
-	public boolean equals(Object other) {
+	public boolean equals(@Nullable Object other) {
 		return (this == other || other instanceof SpringTransactionAnnotationParser);
 	}
 

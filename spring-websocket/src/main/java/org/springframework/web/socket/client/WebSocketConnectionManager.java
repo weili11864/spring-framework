@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,15 +16,17 @@
 
 package org.springframework.web.socket.client;
 
-import java.util.ArrayList;
 import java.util.List;
 
-import org.springframework.context.SmartLifecycle;
+import org.springframework.context.Lifecycle;
 import org.springframework.http.HttpHeaders;
-import org.springframework.util.CollectionUtils;
+import org.springframework.lang.Nullable;
+import org.springframework.util.concurrent.ListenableFuture;
+import org.springframework.util.concurrent.ListenableFutureCallback;
 import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.support.LoggingWebSocketHandlerDecorator;
+import org.springframework.web.socket.handler.LoggingWebSocketHandlerDecorator;
 
 /**
  * A WebSocket connection manager that is given a URI, a {@link WebSocketClient}, and a
@@ -41,11 +43,10 @@ public class WebSocketConnectionManager extends ConnectionManagerSupport {
 
 	private final WebSocketHandler webSocketHandler;
 
+	@Nullable
 	private WebSocketSession webSocketSession;
 
-	private final List<String> subProtocols = new ArrayList<String>();
-
-	private final boolean syncClientLifecycle;
+	private WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
 
 
 	public WebSocketConnectionManager(WebSocketClient client,
@@ -54,61 +55,113 @@ public class WebSocketConnectionManager extends ConnectionManagerSupport {
 		super(uriTemplate, uriVariables);
 		this.client = client;
 		this.webSocketHandler = decorateWebSocketHandler(webSocketHandler);
-		this.syncClientLifecycle = ((client instanceof SmartLifecycle) && !((SmartLifecycle) client).isRunning());
 	}
 
 
 	/**
 	 * Decorate the WebSocketHandler provided to the class constructor.
-	 *
 	 * <p>By default {@link LoggingWebSocketHandlerDecorator} is added.
 	 */
 	protected WebSocketHandler decorateWebSocketHandler(WebSocketHandler handler) {
 		return new LoggingWebSocketHandlerDecorator(handler);
 	}
 
-	public void setSubProtocols(List<String> subProtocols) {
-		this.subProtocols.clear();
-		if (!CollectionUtils.isEmpty(subProtocols)) {
-			this.subProtocols.addAll(subProtocols);
-		}
+	/**
+	 * Set the sub-protocols to use. If configured, specified sub-protocols will be
+	 * requested in the handshake through the {@code Sec-WebSocket-Protocol} header. The
+	 * resulting WebSocket session will contain the protocol accepted by the server, if
+	 * any.
+	 */
+	public void setSubProtocols(List<String> protocols) {
+		this.headers.setSecWebSocketProtocol(protocols);
 	}
 
+	/**
+	 * Return the configured sub-protocols to use.
+	 */
 	public List<String> getSubProtocols() {
-		return this.subProtocols;
+		return this.headers.getSecWebSocketProtocol();
 	}
+
+	/**
+	 * Set the origin to use.
+	 */
+	public void setOrigin(@Nullable String origin) {
+		this.headers.setOrigin(origin);
+	}
+
+	/**
+	 * Return the configured origin.
+	 */
+	@Nullable
+	public String getOrigin() {
+		return this.headers.getOrigin();
+	}
+
+	/**
+	 * Provide default headers to add to the WebSocket handshake request.
+	 */
+	public void setHeaders(HttpHeaders headers) {
+		this.headers.clear();
+		this.headers.putAll(headers);
+	}
+
+	/**
+	 * Return the default headers for the WebSocket handshake request.
+	 */
+	public HttpHeaders getHeaders() {
+		return this.headers;
+	}
+
 
 	@Override
 	public void startInternal() {
-		if (this.syncClientLifecycle) {
-			((SmartLifecycle) this.client).start();
+		if (this.client instanceof Lifecycle && !((Lifecycle) this.client).isRunning()) {
+			((Lifecycle) this.client).start();
 		}
 		super.startInternal();
 	}
 
 	@Override
 	public void stopInternal() throws Exception {
-		if (this.syncClientLifecycle) {
-			((SmartLifecycle) this.client).stop();
+		if (this.client instanceof Lifecycle && ((Lifecycle) this.client).isRunning()) {
+			((Lifecycle) this.client).stop();
 		}
 		super.stopInternal();
 	}
 
 	@Override
-	protected void openConnection() throws Exception {
-		HttpHeaders headers = new HttpHeaders();
-		headers.setSecWebSocketProtocol(this.subProtocols);
-		this.webSocketSession = this.client.doHandshake(this.webSocketHandler, headers, getUri());
+	protected void openConnection() {
+		if (logger.isInfoEnabled()) {
+			logger.info("Connecting to WebSocket at " + getUri());
+		}
+
+		ListenableFuture<WebSocketSession> future =
+				this.client.doHandshake(this.webSocketHandler, this.headers, getUri());
+
+		future.addCallback(new ListenableFutureCallback<WebSocketSession>() {
+			@Override
+			public void onSuccess(@Nullable WebSocketSession result) {
+				webSocketSession = result;
+				logger.info("Successfully connected");
+			}
+			@Override
+			public void onFailure(Throwable ex) {
+				logger.error("Failed to connect", ex);
+			}
+		});
 	}
 
 	@Override
 	protected void closeConnection() throws Exception {
-		this.webSocketSession.close();
+		if (this.webSocketSession != null) {
+			this.webSocketSession.close();
+		}
 	}
 
 	@Override
 	protected boolean isConnected() {
-		return ((this.webSocketSession != null) && (this.webSocketSession.isOpen()));
+		return (this.webSocketSession != null && this.webSocketSession.isOpen());
 	}
 
 }

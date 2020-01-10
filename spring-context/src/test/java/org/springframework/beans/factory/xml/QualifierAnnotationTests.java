@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,31 +16,35 @@
 
 package org.springframework.beans.factory.xml;
 
-import static java.lang.String.format;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.util.Properties;
 
-import static org.junit.Assert.*;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.QualifierAnnotationAutowireCandidateResolver;
+import org.springframework.beans.factory.support.AutowireCandidateQualifier;
 import org.springframework.beans.factory.support.BeanDefinitionReader;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
 import org.springframework.context.support.StaticApplicationContext;
-import static org.springframework.util.ClassUtils.*;
+
+import static java.lang.String.format;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.springframework.util.ClassUtils.convertClassNameToResourcePath;
 
 /**
  * @author Mark Fisher
  * @author Juergen Hoeller
  * @author Chris Beams
  */
-public final class QualifierAnnotationTests {
+public class QualifierAnnotationTests {
 
 	private static final String CLASSNAME = QualifierAnnotationTests.class.getName();
 	private static final String CONFIG_LOCATION =
@@ -53,13 +57,9 @@ public final class QualifierAnnotationTests {
 		BeanDefinitionReader reader = new XmlBeanDefinitionReader(context);
 		reader.loadBeanDefinitions(CONFIG_LOCATION);
 		context.registerSingleton("testBean", NonQualifiedTestBean.class);
-		try {
-			context.refresh();
-			fail("Should have thrown a BeanCreationException");
-		}
-		catch (BeanCreationException e) {
-			assertTrue(e.getMessage().contains("found 6"));
-		}
+		assertThatExceptionOfType(BeanCreationException.class).isThrownBy(
+				context::refresh)
+			.withMessageContaining("found 6");
 	}
 
 	@Test
@@ -71,7 +71,32 @@ public final class QualifierAnnotationTests {
 		context.refresh();
 		QualifiedByValueTestBean testBean = (QualifiedByValueTestBean) context.getBean("testBean");
 		Person person = testBean.getLarry();
-		assertEquals("Larry", person.getName());
+		assertThat(person.getName()).isEqualTo("Larry");
+	}
+
+	@Test
+	public void testQualifiedByParentValue() {
+		StaticApplicationContext parent = new StaticApplicationContext();
+		GenericBeanDefinition parentLarry = new GenericBeanDefinition();
+		parentLarry.setBeanClass(Person.class);
+		parentLarry.getPropertyValues().add("name", "ParentLarry");
+		parentLarry.addQualifier(new AutowireCandidateQualifier(Qualifier.class, "parentLarry"));
+		parent.registerBeanDefinition("someLarry", parentLarry);
+		GenericBeanDefinition otherLarry = new GenericBeanDefinition();
+		otherLarry.setBeanClass(Person.class);
+		otherLarry.getPropertyValues().add("name", "OtherLarry");
+		otherLarry.addQualifier(new AutowireCandidateQualifier(Qualifier.class, "otherLarry"));
+		parent.registerBeanDefinition("someOtherLarry", otherLarry);
+		parent.refresh();
+
+		StaticApplicationContext context = new StaticApplicationContext(parent);
+		BeanDefinitionReader reader = new XmlBeanDefinitionReader(context);
+		reader.loadBeanDefinitions(CONFIG_LOCATION);
+		context.registerSingleton("testBean", QualifiedByParentValueTestBean.class);
+		context.refresh();
+		QualifiedByParentValueTestBean testBean = (QualifiedByParentValueTestBean) context.getBean("testBean");
+		Person person = testBean.getLarry();
+		assertThat(person.getName()).isEqualTo("ParentLarry");
 	}
 
 	@Test
@@ -83,8 +108,8 @@ public final class QualifierAnnotationTests {
 		context.refresh();
 		QualifiedByBeanNameTestBean testBean = (QualifiedByBeanNameTestBean) context.getBean("testBean");
 		Person person = testBean.getLarry();
-		assertEquals("LarryBean", person.getName());
-		assertTrue(testBean.myProps != null && testBean.myProps.isEmpty());
+		assertThat(person.getName()).isEqualTo("LarryBean");
+		assertThat(testBean.myProps != null && testBean.myProps.isEmpty()).isTrue();
 	}
 
 	@Test
@@ -96,7 +121,7 @@ public final class QualifierAnnotationTests {
 		context.refresh();
 		QualifiedByFieldNameTestBean testBean = (QualifiedByFieldNameTestBean) context.getBean("testBean");
 		Person person = testBean.getLarry();
-		assertEquals("LarryBean", person.getName());
+		assertThat(person.getName()).isEqualTo("LarryBean");
 	}
 
 	@Test
@@ -108,7 +133,7 @@ public final class QualifierAnnotationTests {
 		context.refresh();
 		QualifiedByParameterNameTestBean testBean = (QualifiedByParameterNameTestBean) context.getBean("testBean");
 		Person person = testBean.getLarry();
-		assertEquals("LarryBean", person.getName());
+		assertThat(person.getName()).isEqualTo("LarryBean");
 	}
 
 	@Test
@@ -120,7 +145,7 @@ public final class QualifierAnnotationTests {
 		context.refresh();
 		QualifiedByAliasTestBean testBean = (QualifiedByAliasTestBean) context.getBean("testBean");
 		Person person = testBean.getStooge();
-		assertEquals("LarryBean", person.getName());
+		assertThat(person.getName()).isEqualTo("LarryBean");
 	}
 
 	@Test
@@ -132,7 +157,7 @@ public final class QualifierAnnotationTests {
 		context.refresh();
 		QualifiedByAnnotationTestBean testBean = (QualifiedByAnnotationTestBean) context.getBean("testBean");
 		Person person = testBean.getLarry();
-		assertEquals("LarrySpecial", person.getName());
+		assertThat(person.getName()).isEqualTo("LarrySpecial");
 	}
 
 	@Test
@@ -144,7 +169,7 @@ public final class QualifierAnnotationTests {
 		context.refresh();
 		QualifiedByCustomValueTestBean testBean = (QualifiedByCustomValueTestBean) context.getBean("testBean");
 		Person person = testBean.getCurly();
-		assertEquals("Curly", person.getName());
+		assertThat(person.getName()).isEqualTo("Curly");
 	}
 
 	@Test
@@ -156,7 +181,7 @@ public final class QualifierAnnotationTests {
 		context.refresh();
 		QualifiedByAnnotationValueTestBean testBean = (QualifiedByAnnotationValueTestBean) context.getBean("testBean");
 		Person person = testBean.getLarry();
-		assertEquals("LarrySpecial", person.getName());
+		assertThat(person.getName()).isEqualTo("LarrySpecial");
 	}
 
 	@Test
@@ -165,13 +190,9 @@ public final class QualifierAnnotationTests {
 		BeanDefinitionReader reader = new XmlBeanDefinitionReader(context);
 		reader.loadBeanDefinitions(CONFIG_LOCATION);
 		context.registerSingleton("testBean", QualifiedByAttributesTestBean.class);
-		try {
-			context.refresh();
-			fail("should have thrown a BeanCreationException");
-		}
-		catch (BeanCreationException e) {
-			assertTrue(e.getMessage().contains("found 6"));
-		}
+		assertThatExceptionOfType(BeanCreationException.class).isThrownBy(
+				context::refresh)
+			.withMessageContaining("found 6");
 	}
 
 	@Test
@@ -187,8 +208,8 @@ public final class QualifierAnnotationTests {
 
 		MultiQualifierClient testBean = (MultiQualifierClient) context.getBean("testBean");
 
-		assertNotNull( testBean.factoryTheta);
-		assertNotNull( testBean.implTheta);
+		assertThat(testBean.factoryTheta).isNotNull();
+		assertThat(testBean.implTheta).isNotNull();
 	}
 
 	@Test
@@ -214,6 +235,17 @@ public final class QualifierAnnotationTests {
 	private static class QualifiedByValueTestBean {
 
 		@Autowired @Qualifier("larry")
+		private Person larry;
+
+		public Person getLarry() {
+			return larry;
+		}
+	}
+
+
+	private static class QualifiedByParentValueTestBean {
+
+		@Autowired @Qualifier("parentLarry")
 		private Person larry;
 
 		public Person getLarry() {

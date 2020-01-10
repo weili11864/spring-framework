@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,14 +19,22 @@ package org.springframework.jndi;
 import javax.naming.Context;
 import javax.naming.NamingException;
 
-import org.junit.Test;
-import org.springframework.tests.mock.jndi.ExpectedLookupTemplate;
-import org.springframework.tests.sample.beans.DerivedTestBean;
-import org.springframework.tests.sample.beans.ITestBean;
-import org.springframework.tests.sample.beans.TestBean;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
-import static org.mockito.BDDMockito.*;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.beans.testfixture.beans.DerivedTestBean;
+import org.springframework.beans.testfixture.beans.ITestBean;
+import org.springframework.beans.testfixture.beans.TestBean;
+import org.springframework.context.testfixture.jndi.ExpectedLookupTemplate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * @author Rod Johnson
@@ -38,12 +46,7 @@ public class JndiObjectFactoryBeanTests {
 	@Test
 	public void testNoJndiName() throws NamingException {
 		JndiObjectFactoryBean jof = new JndiObjectFactoryBean();
-		try {
-			jof.afterPropertiesSet();
-			fail("Should have thrown IllegalArgumentException");
-		}
-		catch (IllegalArgumentException ex) {
-		}
+		assertThatIllegalArgumentException().isThrownBy(jof::afterPropertiesSet);
 	}
 
 	@Test
@@ -54,7 +57,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("java:comp/env/foo");
 		jof.setResourceRef(true);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() == o);
+		assertThat(jof.getObject() == o).isTrue();
 	}
 
 	@Test
@@ -65,7 +68,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("java:comp/env/foo");
 		jof.setResourceRef(false);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() == o);
+		assertThat(jof.getObject() == o).isTrue();
 	}
 
 	@Test
@@ -76,7 +79,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("java:foo");
 		jof.setResourceRef(true);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() == o);
+		assertThat(jof.getObject() == o).isTrue();
 	}
 
 	@Test
@@ -87,7 +90,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("java:foo");
 		jof.setResourceRef(false);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() == o);
+		assertThat(jof.getObject() == o).isTrue();
 	}
 
 	@Test
@@ -98,7 +101,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("foo");
 		jof.setResourceRef(true);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() == o);
+		assertThat(jof.getObject() == o).isTrue();
 	}
 
 	@Test
@@ -108,13 +111,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiTemplate(new ExpectedLookupTemplate("java:comp/env/foo", o));
 		jof.setJndiName("foo");
 		jof.setResourceRef(false);
-		try {
-			jof.afterPropertiesSet();
-			fail("Should have thrown NamingException");
-		}
-		catch (NamingException ex) {
-			// expected
-		}
+		assertThatExceptionOfType(NamingException.class).isThrownBy(jof::afterPropertiesSet);
 	}
 
 	@Test
@@ -125,7 +122,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("foo");
 		jof.setResourceRef(false);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() == o);
+		assertThat(jof.getObject() == o).isTrue();
 	}
 
 	@Test
@@ -136,64 +133,73 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("foo");
 		jof.setExpectedType(String.class);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() == s);
+		assertThat(jof.getObject() == s).isTrue();
 	}
 
 	@Test
 	public void testLookupWithExpectedTypeAndNoMatch() throws Exception {
 		JndiObjectFactoryBean jof = new JndiObjectFactoryBean();
-		Object o = new Object();
-		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", o));
+		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", new Object()));
 		jof.setJndiName("foo");
 		jof.setExpectedType(String.class);
-		try {
-			jof.afterPropertiesSet();
-			fail("Should have thrown NamingException");
-		}
-		catch (NamingException ex) {
-			assertTrue(ex.getMessage().indexOf("java.lang.String") != -1);
-		}
+		assertThatExceptionOfType(NamingException.class).isThrownBy(
+				jof::afterPropertiesSet)
+			.withMessageContaining("java.lang.String");
 	}
 
 	@Test
 	public void testLookupWithDefaultObject() throws Exception {
 		JndiObjectFactoryBean jof = new JndiObjectFactoryBean();
-		String s = "";
-		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", s));
+		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", ""));
 		jof.setJndiName("myFoo");
 		jof.setExpectedType(String.class);
 		jof.setDefaultObject("myString");
 		jof.afterPropertiesSet();
-		assertEquals("myString", jof.getObject());
+		assertThat(jof.getObject()).isEqualTo("myString");
 	}
 
 	@Test
 	public void testLookupWithDefaultObjectAndExpectedType() throws Exception {
 		JndiObjectFactoryBean jof = new JndiObjectFactoryBean();
-		String s = "";
-		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", s));
+		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", ""));
 		jof.setJndiName("myFoo");
 		jof.setExpectedType(String.class);
 		jof.setDefaultObject("myString");
 		jof.afterPropertiesSet();
-		assertEquals("myString", jof.getObject());
+		assertThat(jof.getObject()).isEqualTo("myString");
+	}
+
+	@Test
+	public void testLookupWithDefaultObjectAndExpectedTypeConversion() throws Exception {
+		JndiObjectFactoryBean jof = new JndiObjectFactoryBean();
+		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", ""));
+		jof.setJndiName("myFoo");
+		jof.setExpectedType(Integer.class);
+		jof.setDefaultObject("5");
+		jof.afterPropertiesSet();
+		assertThat(jof.getObject()).isEqualTo(new Integer(5));
+	}
+
+	@Test
+	public void testLookupWithDefaultObjectAndExpectedTypeConversionViaBeanFactory() throws Exception {
+		JndiObjectFactoryBean jof = new JndiObjectFactoryBean();
+		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", ""));
+		jof.setJndiName("myFoo");
+		jof.setExpectedType(Integer.class);
+		jof.setDefaultObject("5");
+		jof.setBeanFactory(new DefaultListableBeanFactory());
+		jof.afterPropertiesSet();
+		assertThat(jof.getObject()).isEqualTo(new Integer(5));
 	}
 
 	@Test
 	public void testLookupWithDefaultObjectAndExpectedTypeNoMatch() throws Exception {
 		JndiObjectFactoryBean jof = new JndiObjectFactoryBean();
-		String s = "";
-		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", s));
+		jof.setJndiTemplate(new ExpectedLookupTemplate("foo", ""));
 		jof.setJndiName("myFoo");
-		jof.setExpectedType(String.class);
-		jof.setDefaultObject(Boolean.TRUE);
-		try {
-			jof.afterPropertiesSet();
-			fail("Should have thrown IllegalArgumentException");
-		}
-		catch (IllegalArgumentException ex) {
-			// expected
-		}
+		jof.setExpectedType(Boolean.class);
+		jof.setDefaultObject("5");
+		assertThatIllegalArgumentException().isThrownBy(jof::afterPropertiesSet);
 	}
 
 	@Test
@@ -204,11 +210,12 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("foo");
 		jof.setProxyInterface(ITestBean.class);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() instanceof ITestBean);
+		boolean condition = jof.getObject() instanceof ITestBean;
+		assertThat(condition).isTrue();
 		ITestBean proxy = (ITestBean) jof.getObject();
-		assertEquals(0, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(0);
 		proxy.setAge(99);
-		assertEquals(99, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(99);
 	}
 
 	@Test
@@ -219,13 +226,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("myFoo");
 		jof.setProxyInterface(ITestBean.class);
 		jof.setDefaultObject(Boolean.TRUE);
-		try {
-			jof.afterPropertiesSet();
-			fail("Should have thrown IllegalArgumentException");
-		}
-		catch (IllegalArgumentException ex) {
-			// expected
-		}
+		assertThatIllegalArgumentException().isThrownBy(jof::afterPropertiesSet);
 	}
 
 	@Test
@@ -246,13 +247,14 @@ public class JndiObjectFactoryBeanTests {
 		jof.setProxyInterface(ITestBean.class);
 		jof.setLookupOnStartup(false);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() instanceof ITestBean);
+		boolean condition = jof.getObject() instanceof ITestBean;
+		assertThat(condition).isTrue();
 		ITestBean proxy = (ITestBean) jof.getObject();
-		assertNull(tb.getName());
-		assertEquals(0, tb.getAge());
+		assertThat(tb.getName()).isNull();
+		assertThat(tb.getAge()).isEqualTo(0);
 		proxy.setAge(99);
-		assertEquals("tb", tb.getName());
-		assertEquals(99, tb.getAge());
+		assertThat(tb.getName()).isEqualTo("tb");
+		assertThat(tb.getAge()).isEqualTo(99);
 	}
 
 	@Test
@@ -274,14 +276,15 @@ public class JndiObjectFactoryBeanTests {
 		jof.setProxyInterface(ITestBean.class);
 		jof.setCache(false);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() instanceof ITestBean);
+		boolean condition = jof.getObject() instanceof ITestBean;
+		assertThat(condition).isTrue();
 		ITestBean proxy = (ITestBean) jof.getObject();
-		assertEquals("tb", tb.getName());
-		assertEquals(1, tb.getAge());
+		assertThat(tb.getName()).isEqualTo("tb");
+		assertThat(tb.getAge()).isEqualTo(1);
 		proxy.returnsThis();
-		assertEquals(2, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(2);
 		proxy.haveBirthday();
-		assertEquals(4, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(4);
 	}
 
 	@Test
@@ -304,17 +307,18 @@ public class JndiObjectFactoryBeanTests {
 		jof.setLookupOnStartup(false);
 		jof.setCache(false);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() instanceof ITestBean);
+		boolean condition = jof.getObject() instanceof ITestBean;
+		assertThat(condition).isTrue();
 		ITestBean proxy = (ITestBean) jof.getObject();
-		assertNull(tb.getName());
-		assertEquals(0, tb.getAge());
+		assertThat(tb.getName()).isNull();
+		assertThat(tb.getAge()).isEqualTo(0);
 		proxy.returnsThis();
-		assertEquals("tb", tb.getName());
-		assertEquals(1, tb.getAge());
+		assertThat(tb.getName()).isEqualTo("tb");
+		assertThat(tb.getAge()).isEqualTo(1);
 		proxy.returnsThis();
-		assertEquals(2, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(2);
 		proxy.haveBirthday();
-		assertEquals(4, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(4);
 	}
 
 	@Test
@@ -322,13 +326,7 @@ public class JndiObjectFactoryBeanTests {
 		JndiObjectFactoryBean jof = new JndiObjectFactoryBean();
 		jof.setJndiName("foo");
 		jof.setLookupOnStartup(false);
-		try {
-			jof.afterPropertiesSet();
-			fail("Should have thrown IllegalStateException");
-		}
-		catch (IllegalStateException ex) {
-			// expected
-		}
+		assertThatIllegalStateException().isThrownBy(jof::afterPropertiesSet);
 	}
 
 	@Test
@@ -337,13 +335,7 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("foo");
 		jof.setCache(false);
 		jof.setLookupOnStartup(false);
-		try {
-			jof.afterPropertiesSet();
-			fail("Should have thrown IllegalStateException");
-		}
-		catch (IllegalStateException ex) {
-			// expected
-		}
+		assertThatIllegalStateException().isThrownBy(jof::afterPropertiesSet);
 	}
 
 	@Test
@@ -355,11 +347,12 @@ public class JndiObjectFactoryBeanTests {
 		jof.setExpectedType(TestBean.class);
 		jof.setProxyInterface(ITestBean.class);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() instanceof ITestBean);
+		boolean condition = jof.getObject() instanceof ITestBean;
+		assertThat(condition).isTrue();
 		ITestBean proxy = (ITestBean) jof.getObject();
-		assertEquals(0, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(0);
 		proxy.setAge(99);
-		assertEquals(99, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(99);
 	}
 
 	@Test
@@ -370,13 +363,9 @@ public class JndiObjectFactoryBeanTests {
 		jof.setJndiName("foo");
 		jof.setExpectedType(DerivedTestBean.class);
 		jof.setProxyInterface(ITestBean.class);
-		try {
-			jof.afterPropertiesSet();
-			fail("Should have thrown NamingException");
-		}
-		catch (NamingException ex) {
-			assertTrue(ex.getMessage().indexOf("org.springframework.tests.sample.beans.DerivedTestBean") != -1);
-		}
+		assertThatExceptionOfType(NamingException.class).isThrownBy(
+				jof::afterPropertiesSet)
+			.withMessageContaining("org.springframework.beans.testfixture.beans.DerivedTestBean");
 	}
 
 	@Test
@@ -395,11 +384,12 @@ public class JndiObjectFactoryBeanTests {
 		jof.setProxyInterface(ITestBean.class);
 		jof.setExposeAccessContext(true);
 		jof.afterPropertiesSet();
-		assertTrue(jof.getObject() instanceof ITestBean);
+		boolean condition = jof.getObject() instanceof ITestBean;
+		assertThat(condition).isTrue();
 		ITestBean proxy = (ITestBean) jof.getObject();
-		assertEquals(0, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(0);
 		proxy.setAge(99);
-		assertEquals(99, tb.getAge());
+		assertThat(tb.getAge()).isEqualTo(99);
 		proxy.equals(proxy);
 		proxy.hashCode();
 		proxy.toString();

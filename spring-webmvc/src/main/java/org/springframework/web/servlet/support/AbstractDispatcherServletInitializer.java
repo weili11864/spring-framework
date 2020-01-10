@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,48 +26,42 @@ import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRegistration;
 
+import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.core.Conventions;
+import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.context.AbstractContextLoaderInitializer;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.DispatcherServlet;
+import org.springframework.web.servlet.FrameworkServlet;
 
 /**
- * Base class for {@link org.springframework.web.WebApplicationInitializer
- * WebApplicationInitializer} implementations that register a {@link DispatcherServlet} in
- * the servlet context.
+ * Base class for {@link org.springframework.web.WebApplicationInitializer}
+ * implementations that register a {@link DispatcherServlet} in the servlet context.
  *
- * <p>Concrete implementations are required to implement {@link
- * #createServletApplicationContext()}, as well as {@link #getServletMappings()}, both of
- * which gets invoked from {@link #registerDispatcherServlet(ServletContext)}. Further
- * customization can be achieved by overriding
- * {@link #customizeRegistration(ServletRegistration.Dynamic)}.
- *
- * <p>Because this class extends from {@link AbstractContextLoaderInitializer}, concrete
- * implementations are also required to implement {@link #createRootApplicationContext()}
- * to set up a parent "<strong>root</strong>" application context. If a root context is
- * not desired, implementations can simply return {@code null} in the
- * {@code createRootApplicationContext()} implementation.
+ * <p>Most applications should consider extending the Spring Java config subclass
+ * {@link AbstractAnnotationConfigDispatcherServletInitializer}.
  *
  * @author Arjen Poutsma
  * @author Chris Beams
  * @author Rossen Stoyanchev
+ * @author Juergen Hoeller
+ * @author Stephane Nicoll
  * @since 3.2
  */
-public abstract class AbstractDispatcherServletInitializer
-		extends AbstractContextLoaderInitializer {
+public abstract class AbstractDispatcherServletInitializer extends AbstractContextLoaderInitializer {
 
 	/**
 	 * The default servlet name. Can be customized by overriding {@link #getServletName}.
 	 */
 	public static final String DEFAULT_SERVLET_NAME = "dispatcher";
 
+
 	@Override
 	public void onStartup(ServletContext servletContext) throws ServletException {
 		super.onStartup(servletContext);
-
-		this.registerDispatcherServlet(servletContext);
+		registerDispatcherServlet(servletContext);
 	}
 
 	/**
@@ -77,27 +71,26 @@ public abstract class AbstractDispatcherServletInitializer
 	 * from {@link #createServletApplicationContext()}, and mapping it to the patterns
 	 * returned from {@link #getServletMappings()}.
 	 * <p>Further customization can be achieved by overriding {@link
-	 * #customizeRegistration(ServletRegistration.Dynamic)}.
+	 * #customizeRegistration(ServletRegistration.Dynamic)} or
+	 * {@link #createDispatcherServlet(WebApplicationContext)}.
 	 * @param servletContext the context to register the servlet against
 	 */
 	protected void registerDispatcherServlet(ServletContext servletContext) {
-		String servletName = this.getServletName();
-		Assert.hasLength(servletName,
-				"getServletName() may not return empty or null");
+		String servletName = getServletName();
+		Assert.hasLength(servletName, "getServletName() must not return null or empty");
 
-		WebApplicationContext servletAppContext = this.createServletApplicationContext();
-		Assert.notNull(servletAppContext,
-				"createServletApplicationContext() did not return an application " +
-						"context for servlet [" + servletName + "]");
+		WebApplicationContext servletAppContext = createServletApplicationContext();
+		Assert.notNull(servletAppContext, "createServletApplicationContext() must not return null");
 
-		DispatcherServlet dispatcherServlet = new DispatcherServlet(servletAppContext);
+		FrameworkServlet dispatcherServlet = createDispatcherServlet(servletAppContext);
+		Assert.notNull(dispatcherServlet, "createDispatcherServlet(WebApplicationContext) must not return null");
+		dispatcherServlet.setContextInitializers(getServletApplicationContextInitializers());
 
-		ServletRegistration.Dynamic registration =
-				servletContext.addServlet(servletName, dispatcherServlet);
-
-		Assert.notNull(registration,
-				"Failed to register servlet with name '" + servletName + "'." +
-				"Check if there is another servlet registered under the same name.");
+		ServletRegistration.Dynamic registration = servletContext.addServlet(servletName, dispatcherServlet);
+		if (registration == null) {
+			throw new IllegalStateException("Failed to register servlet with name '" + servletName + "'. " +
+					"Check if there is another servlet registered under the same name.");
+		}
 
 		registration.setLoadOnStartup(1);
 		registration.addMapping(getServletMappings());
@@ -110,7 +103,7 @@ public abstract class AbstractDispatcherServletInitializer
 			}
 		}
 
-		this.customizeRegistration(registration);
+		customizeRegistration(registration);
 	}
 
 	/**
@@ -125,25 +118,49 @@ public abstract class AbstractDispatcherServletInitializer
 	/**
 	 * Create a servlet application context to be provided to the {@code DispatcherServlet}.
 	 * <p>The returned context is delegated to Spring's
-	 * {@link DispatcherServlet#DispatcherServlet(WebApplicationContext)} As such, it
-	 * typically contains controllers, view resolvers, locale resolvers, and other
+	 * {@link DispatcherServlet#DispatcherServlet(WebApplicationContext)}. As such,
+	 * it typically contains controllers, view resolvers, locale resolvers, and other
 	 * web-related beans.
 	 * @see #registerDispatcherServlet(ServletContext)
 	 */
 	protected abstract WebApplicationContext createServletApplicationContext();
 
 	/**
-	 * Specify the servlet mapping(s) for the {@code DispatcherServlet}, e.g. '/', '/app', etc.
+	 * Create a {@link DispatcherServlet} (or other kind of {@link FrameworkServlet}-derived
+	 * dispatcher) with the specified {@link WebApplicationContext}.
+	 * <p>Note: This allows for any {@link FrameworkServlet} subclass as of 4.2.3.
+	 * Previously, it insisted on returning a {@link DispatcherServlet} or subclass thereof.
+	 */
+	protected FrameworkServlet createDispatcherServlet(WebApplicationContext servletAppContext) {
+		return new DispatcherServlet(servletAppContext);
+	}
+
+	/**
+	 * Specify application context initializers to be applied to the servlet-specific
+	 * application context that the {@code DispatcherServlet} is being created with.
+	 * @since 4.2
+	 * @see #createServletApplicationContext()
+	 * @see DispatcherServlet#setContextInitializers
+	 * @see #getRootApplicationContextInitializers()
+	 */
+	@Nullable
+	protected ApplicationContextInitializer<?>[] getServletApplicationContextInitializers() {
+		return null;
+	}
+
+	/**
+	 * Specify the servlet mapping(s) for the {@code DispatcherServlet} &mdash;
+	 * for example {@code "/"}, {@code "/app"}, etc.
 	 * @see #registerDispatcherServlet(ServletContext)
 	 */
 	protected abstract String[] getServletMappings();
 
 	/**
-	 * Specify filters to add and also map to the {@code DispatcherServlet}.
-	 *
+	 * Specify filters to add and map to the {@code DispatcherServlet}.
 	 * @return an array of filters or {@code null}
 	 * @see #registerServletFilter(ServletContext, Filter)
 	 */
+	@Nullable
 	protected Filter[] getServletFilters() {
 		return null;
 	}
@@ -159,9 +176,8 @@ public abstract class AbstractDispatcherServletInitializer
 	 * {@code FORWARD}, {@code INCLUDE}, and conditionally {@code ASYNC} depending
 	 * on the return value of {@link #isAsyncSupported() asyncSupported}
 	 * </ul>
-	 * <p>If the above defaults are not suitable or insufficient, register
-	 * filters directly with the {@code ServletContext}.
-	 *
+	 * <p>If the above defaults are not suitable or insufficient, override this
+	 * method and register filters directly with the {@code ServletContext}.
 	 * @param servletContext the servlet context to register filters with
 	 * @param filter the filter to be registered
 	 * @return the filter registration
@@ -169,15 +185,28 @@ public abstract class AbstractDispatcherServletInitializer
 	protected FilterRegistration.Dynamic registerServletFilter(ServletContext servletContext, Filter filter) {
 		String filterName = Conventions.getVariableName(filter);
 		Dynamic registration = servletContext.addFilter(filterName, filter);
+
+		if (registration == null) {
+			int counter = 0;
+			while (registration == null) {
+				if (counter == 100) {
+					throw new IllegalStateException("Failed to register filter with name '" + filterName + "'. " +
+							"Check if there is another filter registered under the same name.");
+				}
+				registration = servletContext.addFilter(filterName + "#" + counter, filter);
+				counter++;
+			}
+		}
+
 		registration.setAsyncSupported(isAsyncSupported());
 		registration.addMappingForServletNames(getDispatcherTypes(), false, getServletName());
 		return registration;
 	}
 
 	private EnumSet<DispatcherType> getDispatcherTypes() {
-		return isAsyncSupported() ?
-			EnumSet.of(DispatcherType.REQUEST, DispatcherType.FORWARD, DispatcherType.INCLUDE, DispatcherType.ASYNC) :
-			EnumSet.of(DispatcherType.REQUEST, DispatcherType.FORWARD, DispatcherType.INCLUDE);
+		return (isAsyncSupported() ?
+				EnumSet.of(DispatcherType.REQUEST, DispatcherType.FORWARD, DispatcherType.INCLUDE, DispatcherType.ASYNC) :
+				EnumSet.of(DispatcherType.REQUEST, DispatcherType.FORWARD, DispatcherType.INCLUDE));
 	}
 
 	/**

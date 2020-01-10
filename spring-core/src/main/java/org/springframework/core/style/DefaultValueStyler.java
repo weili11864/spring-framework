@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,11 +18,12 @@ package org.springframework.core.style;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 
+import org.springframework.lang.Nullable;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ObjectUtils;
 
@@ -39,17 +40,18 @@ import org.springframework.util.ObjectUtils;
  */
 public class DefaultValueStyler implements ValueStyler {
 
-	private static final String EMPTY = "[empty]";
+	private static final String EMPTY = "[[empty]]";
 	private static final String NULL = "[null]";
 	private static final String COLLECTION = "collection";
 	private static final String SET = "set";
 	private static final String LIST = "list";
 	private static final String MAP = "map";
+	private static final String EMPTY_MAP = MAP + EMPTY;
 	private static final String ARRAY = "array";
 
 
 	@Override
-	public String style(Object value) {
+	public String style(@Nullable Object value) {
 		if (value == null) {
 			return NULL;
 		}
@@ -57,20 +59,20 @@ public class DefaultValueStyler implements ValueStyler {
 			return "\'" + value + "\'";
 		}
 		else if (value instanceof Class) {
-			return ClassUtils.getShortName((Class) value);
+			return ClassUtils.getShortName((Class<?>) value);
 		}
 		else if (value instanceof Method) {
 			Method method = (Method) value;
 			return method.getName() + "@" + ClassUtils.getShortName(method.getDeclaringClass());
 		}
 		else if (value instanceof Map) {
-			return style((Map) value);
+			return style((Map<?, ?>) value);
 		}
 		else if (value instanceof Map.Entry) {
-			return style((Map.Entry) value);
+			return style((Map.Entry<? ,?>) value);
 		}
 		else if (value instanceof Collection) {
-			return style((Collection) value);
+			return style((Collection<?>) value);
 		}
 		else if (value.getClass().isArray()) {
 			return styleArray(ObjectUtils.toObjectArray(value));
@@ -80,44 +82,37 @@ public class DefaultValueStyler implements ValueStyler {
 		}
 	}
 
-	private String style(Map value) {
-		StringBuilder result = new StringBuilder(value.size() * 8 + 16);
-		result.append(MAP + "[");
-		for (Iterator it = value.entrySet().iterator(); it.hasNext();) {
-			Map.Entry entry = (Map.Entry) it.next();
-			result.append(style(entry));
-			if (it.hasNext()) {
-				result.append(',').append(' ');
-			}
-		}
+	private <K, V> String style(Map<K, V> value) {
 		if (value.isEmpty()) {
-			result.append(EMPTY);
+			return EMPTY_MAP;
 		}
-		result.append("]");
-		return result.toString();
+
+		StringJoiner result = new StringJoiner(", ", "[", "]");
+		for (Map.Entry<K, V> entry : value.entrySet()) {
+			result.add(style(entry));
+		}
+		return MAP + result;
 	}
 
-	private String style(Map.Entry value) {
+	private String style(Map.Entry<?, ?> value) {
 		return style(value.getKey()) + " -> " + style(value.getValue());
 	}
 
-	private String style(Collection value) {
-		StringBuilder result = new StringBuilder(value.size() * 8 + 16);
-		result.append(getCollectionTypeString(value)).append('[');
-		for (Iterator i = value.iterator(); i.hasNext();) {
-			result.append(style(i.next()));
-			if (i.hasNext()) {
-				result.append(',').append(' ');
-			}
-		}
+	private String style(Collection<?> value) {
+		String collectionType = getCollectionTypeString(value);
+
 		if (value.isEmpty()) {
-			result.append(EMPTY);
+			return collectionType + EMPTY;
 		}
-		result.append("]");
-		return result.toString();
+
+		StringJoiner result = new StringJoiner(", ", "[", "]");
+		for (Object o : value) {
+			result.add(style(o));
+		}
+		return collectionType + result;
 	}
 
-	private String getCollectionTypeString(Collection value) {
+	private String getCollectionTypeString(Collection<?> value) {
 		if (value instanceof List) {
 			return LIST;
 		}
@@ -130,20 +125,15 @@ public class DefaultValueStyler implements ValueStyler {
 	}
 
 	private String styleArray(Object[] array) {
-		StringBuilder result = new StringBuilder(array.length * 8 + 16);
-		result.append(ARRAY + "<").append(ClassUtils.getShortName(array.getClass().getComponentType())).append(">[");
-		for (int i = 0; i < array.length - 1; i++) {
-			result.append(style(array[i]));
-			result.append(',').append(' ');
+		if (array.length == 0) {
+			return ARRAY + '<' + ClassUtils.getShortName(array.getClass().getComponentType()) + '>' + EMPTY;
 		}
-		if (array.length > 0) {
-			result.append(style(array[array.length - 1]));
+
+		StringJoiner result = new StringJoiner(", ", "[", "]");
+		for (Object o : array) {
+			result.add(style(o));
 		}
-		else {
-			result.append(EMPTY);
-		}
-		result.append("]");
-		return result.toString();
+		return ARRAY + '<' + ClassUtils.getShortName(array.getClass().getComponentType()) + '>' + result;
 	}
 
 }

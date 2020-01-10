@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,17 +19,18 @@ package org.springframework.jms.listener;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Executor;
+
 import javax.jms.Connection;
+import javax.jms.ConnectionFactory;
 import javax.jms.Destination;
 import javax.jms.ExceptionListener;
 import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
 import javax.jms.Session;
-import javax.jms.Topic;
 
 import org.springframework.jms.support.JmsUtils;
+import org.springframework.lang.Nullable;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.Assert;
 
@@ -45,7 +46,11 @@ import org.springframework.util.Assert;
  * on the JMS provider: Not even the ServerSessionPool facility is required.
  *
  * <p>See the {@link AbstractMessageListenerContainer} javadoc for details
- * on acknowledge modes and transaction options.
+ * on acknowledge modes and transaction options. Note that this container
+ * exposes standard JMS behavior for the default "AUTO_ACKNOWLEDGE" mode:
+ * that is, automatic message acknowledgment after listener execution,
+ * with no redelivery in case of a user exception thrown but potential
+ * redelivery in case of the JVM dying during listener execution.
  *
  * <p>For a different style of MessageListener handling, through looped
  * {@code MessageConsumer.receive()} calls that also allow for
@@ -60,36 +65,23 @@ import org.springframework.util.Assert;
  */
 public class SimpleMessageListenerContainer extends AbstractMessageListenerContainer implements ExceptionListener {
 
-	private boolean pubSubNoLocal = false;
-
 	private boolean connectLazily = false;
+
+	private boolean recoverOnException = true;
 
 	private int concurrentConsumers = 1;
 
+	@Nullable
 	private Executor taskExecutor;
 
+	@Nullable
 	private Set<Session> sessions;
 
+	@Nullable
 	private Set<MessageConsumer> consumers;
 
 	private final Object consumersMonitor = new Object();
 
-
-	/**
-	 * Set whether to inhibit the delivery of messages published by its own connection.
-	 * Default is "false".
-	 * @see javax.jms.TopicSession#createSubscriber(javax.jms.Topic, String, boolean)
-	 */
-	public void setPubSubNoLocal(boolean pubSubNoLocal) {
-		this.pubSubNoLocal = pubSubNoLocal;
-	}
-
-	/**
-	 * Return whether to inhibit the delivery of messages published by its own connection.
-	 */
-	protected boolean isPubSubNoLocal() {
-		return this.pubSubNoLocal;
-	}
 
 	/**
 	 * Specify whether to connect lazily, i.e. whether to establish the JMS Connection
@@ -106,6 +98,21 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 	}
 
 	/**
+	 * Specify whether to explicitly recover the shared JMS Connection and the
+	 * associated Sessions and MessageConsumers whenever a JMSException is reported.
+	 * <p>Default is "true": refreshing the shared connection and re-initializing the
+	 * consumers whenever the connection propagates an exception to its listener.
+	 * Set this flag to "false" in order to rely on automatic recovery within the
+	 * provider, holding on to the existing connection and consumer handles.
+	 * @since 5.1.8
+	 * @see #onException(JMSException)
+	 * @see Connection#setExceptionListener
+	 */
+	public void setRecoverOnException(boolean recoverOnException) {
+		this.recoverOnException = recoverOnException;
+	}
+
+	/**
 	 * Specify concurrency limits via a "lower-upper" String, e.g. "5-10", or a simple
 	 * upper limit String, e.g. "10".
 	 * <p>This listener container will always hold on to the maximum number of
@@ -114,6 +121,7 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 	 * {@link DefaultMessageListenerContainer}. For this local listener container,
 	 * generally use {@link #setConcurrentConsumers} instead.
 	 */
+	@Override
 	public void setConcurrency(String concurrency) {
 		try {
 			int separatorIndex = concurrency.indexOf('-');
@@ -237,8 +245,11 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 	/**
 	 * JMS ExceptionListener implementation, invoked by the JMS provider in
 	 * case of connection failures. Re-initializes this listener container's
-	 * shared connection and its sessions and consumers.
+	 * shared connection and its sessions and consumers, if necessary.
 	 * @param ex the reported connection exception
+	 * @see #setRecoverOnException
+	 * @see #refreshSharedConnection()
+	 * @see #initializeConsumers()
 	 */
 	@Override
 	public void onException(JMSException ex) {
@@ -246,21 +257,23 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 		invokeExceptionListener(ex);
 
 		// Now try to recover the shared Connection and all consumers...
-		if (logger.isInfoEnabled()) {
-			logger.info("Trying to recover from JMS Connection exception: " + ex);
-		}
-		try {
-			synchronized (this.consumersMonitor) {
-				this.sessions = null;
-				this.consumers = null;
+		if (this.recoverOnException) {
+			if (logger.isDebugEnabled()) {
+				logger.debug("Trying to recover from JMS Connection exception: " + ex);
 			}
-			refreshSharedConnection();
-			initializeConsumers();
-			logger.info("Successfully refreshed JMS Connection");
-		}
-		catch (JMSException recoverEx) {
-			logger.debug("Failed to recover JMS Connection", recoverEx);
-			logger.error("Encountered non-recoverable JMSException", ex);
+			try {
+				synchronized (this.consumersMonitor) {
+					this.sessions = null;
+					this.consumers = null;
+				}
+				refreshSharedConnection();
+				initializeConsumers();
+				logger.debug("Successfully refreshed JMS Connection");
+			}
+			catch (JMSException recoverEx) {
+				logger.debug("Failed to recover JMS Connection", recoverEx);
+				logger.error("Encountered non-recoverable JMSException", ex);
+			}
 		}
 	}
 
@@ -272,8 +285,8 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 		// Register Sessions and MessageConsumers.
 		synchronized (this.consumersMonitor) {
 			if (this.consumers == null) {
-				this.sessions = new HashSet<Session>(this.concurrentConsumers);
-				this.consumers = new HashSet<MessageConsumer>(this.concurrentConsumers);
+				this.sessions = new HashSet<>(this.concurrentConsumers);
+				this.consumers = new HashSet<>(this.concurrentConsumers);
 				Connection con = getSharedConnection();
 				for (int i = 0; i < this.concurrentConsumers; i++) {
 					Session session = createSession(con);
@@ -296,30 +309,17 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 	protected MessageConsumer createListenerConsumer(final Session session) throws JMSException {
 		Destination destination = getDestination();
 		if (destination == null) {
-			destination = resolveDestinationName(session, getDestinationName());
+			String destinationName = getDestinationName();
+			Assert.state(destinationName != null, "No destination set");
+			destination = resolveDestinationName(session, destinationName);
 		}
 		MessageConsumer consumer = createConsumer(session, destination);
 
 		if (this.taskExecutor != null) {
-			consumer.setMessageListener(new MessageListener() {
-				@Override
-				public void onMessage(final Message message) {
-					taskExecutor.execute(new Runnable() {
-						@Override
-						public void run() {
-							processMessage(message, session);
-						}
-					});
-				}
-			});
+			consumer.setMessageListener(message -> this.taskExecutor.execute(() -> processMessage(message, session)));
 		}
 		else {
-			consumer.setMessageListener(new MessageListener() {
-				@Override
-				public void onMessage(Message message) {
-					processMessage(message, session);
-				}
-			});
+			consumer.setMessageListener(message -> processMessage(message, session));
 		}
 
 		return consumer;
@@ -335,10 +335,11 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 	 * @see #setExposeListenerSession
 	 */
 	protected void processMessage(Message message, Session session) {
-		boolean exposeResource = isExposeListenerSession();
+		ConnectionFactory connectionFactory = getConnectionFactory();
+		boolean exposeResource = (connectionFactory != null && isExposeListenerSession());
 		if (exposeResource) {
 			TransactionSynchronizationManager.bindResource(
-					getConnectionFactory(), new LocallyExposedJmsResourceHolder(session));
+					connectionFactory, new LocallyExposedJmsResourceHolder(session));
 		}
 		try {
 			executeListener(session, message);
@@ -361,42 +362,13 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 				for (MessageConsumer consumer : this.consumers) {
 					JmsUtils.closeMessageConsumer(consumer);
 				}
-				logger.debug("Closing JMS Sessions");
-				for (Session session : this.sessions) {
-					JmsUtils.closeSession(session);
+				if (this.sessions != null) {
+					logger.debug("Closing JMS Sessions");
+					for (Session session : this.sessions) {
+						JmsUtils.closeSession(session);
+					}
 				}
 			}
-		}
-	}
-
-
-	//-------------------------------------------------------------------------
-	// JMS 1.1 factory methods, potentially overridden for JMS 1.0.2
-	//-------------------------------------------------------------------------
-
-	/**
-	 * Create a JMS MessageConsumer for the given Session and Destination.
-	 * <p>This implementation uses JMS 1.1 API.
-	 * @param session the JMS Session to create a MessageConsumer for
-	 * @param destination the JMS Destination to create a MessageConsumer for
-	 * @return the new JMS MessageConsumer
-	 * @throws JMSException if thrown by JMS API methods
-	 */
-	protected MessageConsumer createConsumer(Session session, Destination destination) throws JMSException {
-		// Only pass in the NoLocal flag in case of a Topic:
-		// Some JMS providers, such as WebSphere MQ 6.0, throw IllegalStateException
-		// in case of the NoLocal flag being specified for a Queue.
-		if (isPubSubDomain()) {
-			if (isSubscriptionDurable() && destination instanceof Topic) {
-				return session.createDurableSubscriber(
-						(Topic) destination, getDurableSubscriptionName(), getMessageSelector(), isPubSubNoLocal());
-			}
-			else {
-				return session.createConsumer(destination, getMessageSelector(), isPubSubNoLocal());
-			}
-		}
-		else {
-			return session.createConsumer(destination, getMessageSelector());
 		}
 	}
 

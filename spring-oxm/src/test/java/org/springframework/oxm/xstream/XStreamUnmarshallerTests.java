@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2009 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
+
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.stream.XMLInputFactory;
@@ -28,13 +29,14 @@ import javax.xml.transform.Source;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamSource;
 
-import static org.junit.Assert.*;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
 
 import org.springframework.util.xml.StaxUtils;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author Arjen Poutsma
@@ -45,19 +47,20 @@ public class XStreamUnmarshallerTests {
 
 	private XStreamMarshaller unmarshaller;
 
-	@Before
-	public void creteUnmarshaller() throws Exception {
+	@BeforeEach
+	public void createUnmarshaller() throws Exception {
 		unmarshaller = new XStreamMarshaller();
-		Map<String, Class> aliases = new HashMap<String, Class>();
+		Map<String, Class<?>> aliases = new HashMap<>();
 		aliases.put("flight", Flight.class);
 		unmarshaller.setAliases(aliases);
 	}
 
 	private void testFlight(Object o) {
-		assertTrue("Unmarshalled object is not Flights", o instanceof Flight);
+		boolean condition = o instanceof Flight;
+		assertThat(condition).as("Unmarshalled object is not Flights").isTrue();
 		Flight flight = (Flight) o;
-		assertNotNull("Flight is null", flight);
-		assertEquals("Number is invalid", 42L, flight.getFlightNumber());
+		assertThat(flight).as("Flight is null").isNotNull();
+		assertThat(flight.getFlightNumber()).as("Number is invalid").isEqualTo(42L);
 	}
 
 	@Test

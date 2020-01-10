@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,40 +16,105 @@
 
 package org.springframework.context.annotation.configuration;
 
+import java.util.Collections;
+
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
-import org.junit.Ignore;
-import org.junit.Test;
-import org.springframework.tests.sample.beans.TestBean;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.support.PropertiesBeanDefinitionReader;
-import org.springframework.beans.factory.xml.XmlBeanDefinitionReader;
-import org.springframework.context.ApplicationContext;
+import org.springframework.beans.testfixture.beans.TestBean;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportResource;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.PropertySource;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for {@link ImportResource} support.
  *
  * @author Chris Beams
  * @author Juergen Hoeller
+ * @author Sam Brannen
  */
 public class ImportResourceTests {
+
 	@Test
-	public void testImportXml() {
+	public void importXml() {
 		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportXmlConfig.class);
-		assertTrue("did not contain java-declared bean", ctx.containsBean("javaDeclaredBean"));
-		assertTrue("did not contain xml-declared bean", ctx.containsBean("xmlDeclaredBean"));
+		assertThat(ctx.containsBean("javaDeclaredBean")).as("did not contain java-declared bean").isTrue();
+		assertThat(ctx.containsBean("xmlDeclaredBean")).as("did not contain xml-declared bean").isTrue();
 		TestBean tb = ctx.getBean("javaDeclaredBean", TestBean.class);
-		assertEquals("myName", tb.getName());
+		assertThat(tb.getName()).isEqualTo("myName");
+		ctx.close();
 	}
+
+	@Test
+	public void importXmlIsInheritedFromSuperclassDeclarations() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(FirstLevelSubConfig.class);
+		assertThat(ctx.containsBean("xmlDeclaredBean")).isTrue();
+		ctx.close();
+	}
+
+	@Test
+	public void importXmlIsMergedFromSuperclassDeclarations() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(SecondLevelSubConfig.class);
+		assertThat(ctx.containsBean("secondLevelXmlDeclaredBean")).as("failed to pick up second-level-declared XML bean").isTrue();
+		assertThat(ctx.containsBean("xmlDeclaredBean")).as("failed to pick up parent-declared XML bean").isTrue();
+		ctx.close();
+	}
+
+	@Test
+	public void importXmlWithNamespaceConfig() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportXmlWithAopNamespaceConfig.class);
+		Object bean = ctx.getBean("proxiedXmlBean");
+		assertThat(AopUtils.isAopProxy(bean)).isTrue();
+		ctx.close();
+	}
+
+	@Test
+	public void importXmlWithOtherConfigurationClass() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportXmlWithConfigurationClass.class);
+		assertThat(ctx.containsBean("javaDeclaredBean")).as("did not contain java-declared bean").isTrue();
+		assertThat(ctx.containsBean("xmlDeclaredBean")).as("did not contain xml-declared bean").isTrue();
+		TestBean tb = ctx.getBean("javaDeclaredBean", TestBean.class);
+		assertThat(tb.getName()).isEqualTo("myName");
+		ctx.close();
+	}
+
+	@Test
+	public void importWithPlaceholder() throws Exception {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+		PropertySource<?> propertySource = new MapPropertySource("test",
+				Collections.<String, Object> singletonMap("test", "springframework"));
+		ctx.getEnvironment().getPropertySources().addFirst(propertySource);
+		ctx.register(ImportXmlConfig.class);
+		ctx.refresh();
+		assertThat(ctx.containsBean("xmlDeclaredBean")).as("did not contain xml-declared bean").isTrue();
+		ctx.close();
+	}
+
+	@Test
+	public void importXmlWithAutowiredConfig() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportXmlAutowiredConfig.class);
+		String name = ctx.getBean("xmlBeanName", String.class);
+		assertThat(name).isEqualTo("xml.declared");
+		ctx.close();
+	}
+
+	@Test
+	public void importNonXmlResource() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportNonXmlResourceConfig.class);
+		assertThat(ctx.containsBean("propertiesDeclaredBean")).isTrue();
+		ctx.close();
+	}
+
 
 	@Configuration
 	@ImportResource("classpath:org/springframework/context/annotation/configuration/ImportXmlConfig-context.xml")
@@ -59,49 +124,6 @@ public class ImportResourceTests {
 		public @Bean TestBean javaDeclaredBean() {
 			return new TestBean(this.name);
 		}
-	}
-
-	@Ignore // TODO: SPR-6310
-	@Test
-	public void testImportXmlWithRelativePath() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportXmlWithRelativePathConfig.class);
-		assertTrue("did not contain java-declared bean", ctx.containsBean("javaDeclaredBean"));
-		assertTrue("did not contain xml-declared bean", ctx.containsBean("xmlDeclaredBean"));
-		TestBean tb = ctx.getBean("javaDeclaredBean", TestBean.class);
-		assertEquals("myName", tb.getName());
-	}
-
-	@Configuration
-	@ImportResource("ImportXmlConfig-context.xml")
-	static class ImportXmlWithRelativePathConfig {
-		public @Bean TestBean javaDeclaredBean() {
-			return new TestBean("java.declared");
-		}
-	}
-
-	@Ignore // TODO: SPR-6310
-	@Test
-	public void testImportXmlByConvention() {
-		ApplicationContext ctx = new AnnotationConfigApplicationContext(ImportXmlByConventionConfig.class);
-		assertTrue("context does not contain xml-declared bean", ctx.containsBean("xmlDeclaredBean"));
-	}
-
-	@Configuration
-	//@ImportXml
-	static class ImportXmlByConventionConfig {
-	}
-
-	@Test
-	public void testImportXmlIsInheritedFromSuperclassDeclarations() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(FirstLevelSubConfig.class);
-		assertTrue(ctx.containsBean("xmlDeclaredBean"));
-	}
-
-	@Test
-	public void testImportXmlIsMergedFromSuperclassDeclarations() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(SecondLevelSubConfig.class);
-		assertTrue("failed to pick up second-level-declared XML bean", ctx.containsBean("secondLevelXmlDeclaredBean"));
-		assertTrue("failed to pick up parent-declared XML bean", ctx.containsBean("xmlDeclaredBean"));
 	}
 
 	@Configuration
@@ -118,13 +140,6 @@ public class ImportResourceTests {
 	static class SecondLevelSubConfig extends BaseConfig {
 	}
 
-	@Test
-	public void testImportXmlWithNamespaceConfig() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportXmlWithAopNamespaceConfig.class);
-		Object bean = ctx.getBean("proxiedXmlBean");
-		assertTrue(AopUtils.isAopProxy(bean));
-	}
-
 	@Configuration
 	@ImportResource("classpath:org/springframework/context/annotation/configuration/ImportXmlWithAopNamespace-context.xml")
 	static class ImportXmlWithAopNamespaceConfig {
@@ -132,19 +147,17 @@ public class ImportResourceTests {
 
 	@Aspect
 	static class AnAspect {
-		@Before("execution(* org.springframework.tests.sample.beans.TestBean.*(..))")
+		@Before("execution(* org.springframework.beans.testfixture.beans.TestBean.*(..))")
 		public void advice() { }
 	}
 
-	@Test
-	public void testImportXmlWithAutowiredConfig() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportXmlAutowiredConfig.class);
-		String name = ctx.getBean("xmlBeanName", String.class);
-		assertThat(name, equalTo("xml.declared"));
+	@Configuration
+	@ImportResource("classpath:org/springframework/context/annotation/configuration/ImportXmlWithConfigurationClass-context.xml")
+	static class ImportXmlWithConfigurationClass {
 	}
 
 	@Configuration
-	@ImportResource(value="classpath:org/springframework/context/annotation/configuration/ImportXmlConfig-context.xml")
+	@ImportResource("classpath:org/springframework/context/annotation/configuration/ImportXmlConfig-context.xml")
 	static class ImportXmlAutowiredConfig {
 		@Autowired TestBean xmlDeclaredBean;
 
@@ -153,29 +166,9 @@ public class ImportResourceTests {
 		}
 	}
 
-	@Test
-	public void testImportNonXmlResource() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ImportNonXmlResourceConfig.class);
-		assertTrue(ctx.containsBean("propertiesDeclaredBean"));
-	}
-
 	@Configuration
-	@ImportResource(value="classpath:org/springframework/context/annotation/configuration/ImportNonXmlResourceConfig-context.properties",
-			reader=PropertiesBeanDefinitionReader.class)
+	@ImportResource(locations = "classpath:org/springframework/context/annotation/configuration/ImportNonXmlResourceConfig-context.properties", reader = PropertiesBeanDefinitionReader.class)
 	static class ImportNonXmlResourceConfig {
 	}
 
-	@Ignore // TODO: SPR-6327
-	@Test
-	public void testImportDifferentResourceTypes() {
-		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(SubResourceConfig.class);
-		assertTrue(ctx.containsBean("propertiesDeclaredBean"));
-		assertTrue(ctx.containsBean("xmlDeclaredBean"));
-	}
-
-	@Configuration
-	@ImportResource(value="classpath:org/springframework/context/annotation/configuration/ImportXmlConfig-context.xml",
-			reader=XmlBeanDefinitionReader.class)
-	static class SubResourceConfig extends ImportNonXmlResourceConfig {
-	}
 }

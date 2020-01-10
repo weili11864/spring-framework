@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,11 +20,14 @@ import javax.jms.Destination;
 import javax.jms.Session;
 import javax.naming.NamingException;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
 import org.springframework.jms.StubTopic;
 
-import static org.junit.Assert.*;
-import static org.mockito.BDDMockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author Rick Evans
@@ -44,8 +47,8 @@ public class JndiDestinationResolverTests {
 
 		JndiDestinationResolver resolver = new OneTimeLookupJndiDestinationResolver();
 		Destination destination = resolver.resolveDestinationName(session, DESTINATION_NAME, true);
-		assertNotNull(destination);
-		assertSame(DESTINATION, destination);
+		assertThat(destination).isNotNull();
+		assertThat(destination).isSameAs(DESTINATION);
 	}
 
 	@Test
@@ -57,14 +60,14 @@ public class JndiDestinationResolverTests {
 				= new CountingCannedJndiDestinationResolver();
 		resolver.setCache(false);
 		Destination destination = resolver.resolveDestinationName(session, DESTINATION_NAME, true);
-		assertNotNull(destination);
-		assertSame(DESTINATION, destination);
-		assertEquals(1, resolver.getCallCount());
+		assertThat(destination).isNotNull();
+		assertThat(destination).isSameAs(DESTINATION);
+		assertThat(resolver.getCallCount()).isEqualTo(1);
 
 		destination = resolver.resolveDestinationName(session, DESTINATION_NAME, true);
-		assertNotNull(destination);
-		assertSame(DESTINATION, destination);
-		assertEquals(2, resolver.getCallCount());
+		assertThat(destination).isNotNull();
+		assertThat(destination).isSameAs(DESTINATION);
+		assertThat(resolver.getCallCount()).isEqualTo(2);
 	}
 
 	@Test
@@ -77,7 +80,7 @@ public class JndiDestinationResolverTests {
 
 		JndiDestinationResolver resolver = new JndiDestinationResolver() {
 			@Override
-			protected Object lookup(String jndiName, Class requiredClass) throws NamingException {
+			protected <T> T lookup(String jndiName, Class<T> requiredClass) throws NamingException {
 				throw new NamingException();
 			}
 		};
@@ -85,8 +88,8 @@ public class JndiDestinationResolverTests {
 		resolver.setDynamicDestinationResolver(dynamicResolver);
 		Destination destination = resolver.resolveDestinationName(session, DESTINATION_NAME, true);
 
-		assertNotNull(destination);
-		assertSame(DESTINATION, destination);
+		assertThat(destination).isNotNull();
+		assertThat(destination).isSameAs(DESTINATION);
 	}
 
 	@Test
@@ -96,19 +99,14 @@ public class JndiDestinationResolverTests {
 
 		final JndiDestinationResolver resolver = new JndiDestinationResolver() {
 			@Override
-			protected Object lookup(String jndiName, Class requiredClass) throws NamingException {
+			protected <T> T lookup(String jndiName, Class<T> requiredClass) throws NamingException {
 				throw new NamingException();
 			}
 		};
 		resolver.setDynamicDestinationResolver(dynamicResolver);
 
-		try {
-			resolver.resolveDestinationName(session, DESTINATION_NAME, true);
-			fail("expected DestinationResolutionException");
-		}
-		catch (DestinationResolutionException ex) {
-			// expected
-		}
+		assertThatExceptionOfType(DestinationResolutionException.class).isThrownBy(() ->
+				resolver.resolveDestinationName(session, DESTINATION_NAME, true));
 	}
 
 
@@ -117,13 +115,11 @@ public class JndiDestinationResolverTests {
 		private boolean called;
 
 		@Override
-		protected Object lookup(String jndiName, Class requiredType) throws NamingException {
-			if (called) {
-				fail("Must not be delegating to lookup(..), must be resolving from cache.");
-			}
-			assertEquals(DESTINATION_NAME, jndiName);
+		protected <T> T lookup(String jndiName, Class<T> requiredType) throws NamingException {
+			assertThat(called).as("delegating to lookup(..) not cache").isFalse();
+			assertThat(jndiName).isEqualTo(DESTINATION_NAME);
 			called = true;
-			return DESTINATION;
+			return requiredType.cast(DESTINATION);
 		}
 	}
 
@@ -136,9 +132,9 @@ public class JndiDestinationResolverTests {
 		}
 
 		@Override
-		protected Object lookup(String jndiName, Class requiredType) throws NamingException {
+		protected <T> T lookup(String jndiName, Class<T> requiredType) throws NamingException {
 			++this.callCount;
-			return DESTINATION;
+			return requiredType.cast(DESTINATION);
 		}
 	}
 }

@@ -15,10 +15,16 @@ spring-test/test-output/
 .gradle
 argfile*
 pom.xml
+activemq-data/
 
+classes/
 /build
 buildSrc/build
 /spring-*/build
+/spring-core/kotlin-coroutines/build
+/framework-bom/build
+/integration-tests/build
+/src/asciidoc/build
 target/
 
 # Eclipse artifacts, including WTP generated manifests
@@ -30,6 +36,8 @@ spring-*/src/main/java/META-INF/MANIFEST.MF
 *.iml
 *.ipr
 *.iws
+.idea
 out
 test-output
 atlassian-ide-plugin.xml
+.gradletasknamecache

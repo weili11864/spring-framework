@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import java.lang.reflect.Method;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ObjectUtils;
 
@@ -38,7 +39,7 @@ public class ReplaceOverride extends MethodOverride {
 
 	private final String methodReplacerBeanName;
 
-	private List<String> typeIdentifiers = new LinkedList<String>();
+	private List<String> typeIdentifiers = new LinkedList<>();
 
 
 	/**
@@ -51,6 +52,7 @@ public class ReplaceOverride extends MethodOverride {
 		Assert.notNull(methodName, "Method replacer bean name must not be null");
 		this.methodReplacerBeanName = methodReplacerBeanName;
 	}
+
 
 	/**
 	 * Return the name of the bean implementing MethodReplacer.
@@ -68,28 +70,23 @@ public class ReplaceOverride extends MethodOverride {
 		this.typeIdentifiers.add(identifier);
 	}
 
-
 	@Override
 	public boolean matches(Method method) {
-		// TODO could cache result for efficiency
 		if (!method.getName().equals(getMethodName())) {
-			// It can't match.
 			return false;
 		}
-
 		if (!isOverloaded()) {
-			// No overloaded: don't worry about arg type matching.
+			// Not overloaded: don't worry about arg type matching...
 			return true;
 		}
-
-		// If we get to here, we need to insist on precise argument matching.
-		if (this.typeIdentifiers.size() != method.getParameterTypes().length) {
+		// If we get here, we need to insist on precise argument matching...
+		if (this.typeIdentifiers.size() != method.getParameterCount()) {
 			return false;
 		}
+		Class<?>[] parameterTypes = method.getParameterTypes();
 		for (int i = 0; i < this.typeIdentifiers.size(); i++) {
 			String identifier = this.typeIdentifiers.get(i);
-			if (!method.getParameterTypes()[i].getName().contains(identifier)) {
-				// This parameter cannot match.
+			if (!parameterTypes[i].getName().contains(identifier)) {
 				return false;
 			}
 		}
@@ -98,13 +95,7 @@ public class ReplaceOverride extends MethodOverride {
 
 
 	@Override
-	public String toString() {
-		return "Replace override for method '" + getMethodName() + "; will call bean '" +
-				this.methodReplacerBeanName + "'";
-	}
-
-	@Override
-	public boolean equals(Object other) {
+	public boolean equals(@Nullable Object other) {
 		if (!(other instanceof ReplaceOverride) || !super.equals(other)) {
 			return false;
 		}
@@ -119,6 +110,11 @@ public class ReplaceOverride extends MethodOverride {
 		hashCode = 29 * hashCode + ObjectUtils.nullSafeHashCode(this.methodReplacerBeanName);
 		hashCode = 29 * hashCode + ObjectUtils.nullSafeHashCode(this.typeIdentifiers);
 		return hashCode;
+	}
+
+	@Override
+	public String toString() {
+		return "Replace override for method '" + getMethodName() + "'";
 	}
 
 }

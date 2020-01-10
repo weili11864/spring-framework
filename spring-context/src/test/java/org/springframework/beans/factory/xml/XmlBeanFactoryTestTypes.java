@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,31 +20,31 @@ import java.beans.ConstructorProperties;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import javax.sql.DataSource;
 
 import org.springframework.beans.BeansException;
-import org.springframework.tests.sample.beans.ITestBean;
-import org.springframework.tests.sample.beans.IndexedTestBean;
-import org.springframework.tests.sample.beans.TestBean;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.DisposableBean;
-import org.springframework.tests.sample.beans.factory.DummyFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.support.MethodReplacer;
+import org.springframework.beans.testfixture.beans.FactoryMethods;
+import org.springframework.beans.testfixture.beans.ITestBean;
+import org.springframework.beans.testfixture.beans.IndexedTestBean;
+import org.springframework.beans.testfixture.beans.TestBean;
+import org.springframework.beans.testfixture.beans.factory.DummyFactory;
 
 /**
  * Types used by {@link XmlBeanFactoryTests} and its attendant XML config files.
  *
  * @author Chris Beams
  */
-final class XmlBeanFactoryTestTypes { }
+final class XmlBeanFactoryTestTypes {
+}
+
 
 /**
  * Simple bean used to check constructor dependency checking.
@@ -174,18 +174,12 @@ abstract class ConstructorInjectedOverrides {
 		return this.tb;
 	}
 
-
 	protected abstract FactoryMethods createFactoryMethods();
 
-	/**
-	 * @return Returns the setterString.
-	 */
 	public String getSetterString() {
 		return setterString;
 	}
-	/**
-	 * @param setterString The setterString to set.
-	 */
+
 	public void setSetterString(String setterString) {
 		this.setterString = setterString;
 	}
@@ -229,23 +223,19 @@ class DerivedConstructorDependenciesBean extends ConstructorDependenciesBean {
 	private void destroy() {
 		this.destroyed = true;
 	}
-
 }
 
 
 /**
- *
  * @author Rod Johnson
  */
 interface DummyBo {
 
 	void something();
-
 }
 
 
 /**
- *
  * @author Rod Johnson
  */
 class DummyBoImpl implements DummyBo {
@@ -258,9 +248,7 @@ class DummyBoImpl implements DummyBo {
 
 	@Override
 	public void something() {
-
 	}
-
 }
 
 
@@ -268,13 +256,6 @@ class DummyBoImpl implements DummyBo {
  * @author Rod Johnson
  */
 class DummyDao {
-
-	DataSource ds;
-
-	public DummyDao(DataSource ds) {
-		this.ds = ds;
-	}
-
 }
 
 
@@ -289,7 +270,6 @@ class DummyReferencer {
 	private TestBean testBean2;
 
 	private DummyFactory dummyFactory;
-
 
 	public DummyReferencer() {
 	}
@@ -321,108 +301,8 @@ class DummyReferencer {
 	public TestBean getTestBean2() {
 		return testBean2;
 	}
-
 }
 
-
-/**
- * Test class for Spring's ability to create objects using static
- * factory methods, rather than constructors.
- *
- * @author Rod Johnson
- * @author Juergen Hoeller
- */
-@SuppressWarnings("unused")
-class FactoryMethods {
-
-	public static FactoryMethods nullInstance() {
-		return null;
-	}
-
-	public static FactoryMethods defaultInstance() {
-		TestBean tb = new TestBean();
-		tb.setName("defaultInstance");
-		return new FactoryMethods(tb, "default", 0);
-	}
-
-	/**
-	 * Note that overloaded methods are supported.
-	 */
-	public static FactoryMethods newInstance(TestBean tb) {
-		return new FactoryMethods(tb, "default", 0);
-	}
-
-	protected static FactoryMethods newInstance(TestBean tb, int num, String name) {
-		if (name == null) {
-			throw new IllegalStateException("Should never be called with null value");
-		}
-		return new FactoryMethods(tb, name, num);
-	}
-
-	static FactoryMethods newInstance(TestBean tb, int num, Integer something) {
-		if (something != null) {
-			throw new IllegalStateException("Should never be called with non-null value");
-		}
-		return new FactoryMethods(tb, null, num);
-	}
-
-	private static List<?> listInstance() {
-		return Collections.EMPTY_LIST;
-	}
-
-
-	private int num = 0;
-	private String name = "default";
-	private TestBean tb;
-	private String stringValue;
-
-
-	/**
-	 * Constructor is private: not for use outside this class,
-	 * even by IoC container.
-	 */
-	private FactoryMethods(TestBean tb, String name, int num) {
-		this.tb = tb;
-		this.name = name;
-		this.num = num;
-	}
-
-	public void setStringValue(String stringValue) {
-		this.stringValue = stringValue;
-	}
-
-	public String getStringValue() {
-		return this.stringValue;
-	}
-
-	public TestBean getTestBean() {
-		return this.tb;
-	}
-
-	protected TestBean protectedGetTestBean() {
-		return this.tb;
-	}
-
-	private TestBean privateGetTestBean() {
-		return this.tb;
-	}
-
-	public int getNum() {
-		return num;
-	}
-
-	public String getName() {
-		return name;
-	}
-
-	/**
-	 * Set via Setter Injection once instance is created.
-	 */
-	public void setName(String name) {
-		this.name = name;
-	}
-
-}
 
 /**
  * Fixed method replacer for String return types
@@ -436,7 +316,6 @@ class FixedMethodReplacer implements MethodReplacer {
 	public Object reimplement(Object obj, Method method, Object[] args) throws Throwable {
 		return VALUE;
 	}
-
 }
 
 
@@ -469,21 +348,16 @@ class MethodReplaceCandidate {
 	public String replaceMe(String echo) {
 		return echo;
 	}
-
 }
 
 
 /**
  * Bean that exposes a simple property that can be set
  * to a mix of references and individual values.
- *
- * @author Rod Johnson
- * @since 27.05.2003
  */
 class MixedCollectionBean {
 
 	private Collection<?> jumble;
-
 
 	public void setJumble(Collection<?> jumble) {
 		this.jumble = jumble;
@@ -492,7 +366,6 @@ class MixedCollectionBean {
 	public Collection<?> getJumble() {
 		return jumble;
 	}
-
 }
 
 
@@ -504,7 +377,6 @@ interface OverrideInterface {
 	TestBean getPrototypeDependency();
 
 	TestBean getPrototypeDependency(Object someParam);
-
 }
 
 
@@ -521,7 +393,7 @@ abstract class OverrideOneMethod extends MethodReplaceCandidate implements Overr
 		return new TestBean();
 	}
 
-	public TestBean invokesOverridenMethodOnSelf() {
+	public TestBean invokesOverriddenMethodOnSelf() {
 		return getPrototypeDependency();
 	}
 
@@ -563,7 +435,6 @@ abstract class OverrideOneMethodSubclass extends OverrideOneMethod {
 		// This implementation does nothing!
 		// It's not overloaded
 	}
-
 }
 
 
@@ -590,7 +461,6 @@ class ProtectedLifecycleBean implements BeanNameAware, BeanFactoryAware, Initial
 	protected boolean postProcessedAfterInit;
 
 	protected boolean destroyed;
-
 
 	public void setInitMethodDeclared(boolean initMethodDeclared) {
 		this.initMethodDeclared = initMethodDeclared;
@@ -707,7 +577,6 @@ class ProtectedLifecycleBean implements BeanNameAware, BeanFactoryAware, Initial
 			return bean;
 		}
 	}
-
 }
 
 
@@ -722,7 +591,6 @@ class ReverseMethodReplacer implements MethodReplacer, Serializable {
 		String s = (String) args[0];
 		return new StringBuffer(s).reverse().toString();
 	}
-
 }
 
 
@@ -733,7 +601,6 @@ class ReverseMethodReplacer implements MethodReplacer, Serializable {
 abstract class SerializableMethodReplacerCandidate extends MethodReplaceCandidate implements Serializable {
 
 	//public abstract Point getPoint();
-
 }
 
 
@@ -769,5 +636,4 @@ class SingleSimpleTypeConstructorBean {
 	public String getTestString() {
 		return testString;
 	}
-
 }

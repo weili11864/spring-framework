@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,10 +16,8 @@
 
 package org.springframework.context.annotation;
 
-import org.jruby.internal.runtime.methods.MethodMethod;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.core.type.AnnotatedTypeMetadata;
-import org.springframework.core.type.AnnotationMetadata;
 
 /**
  * A single {@code condition} that must be {@linkplain #matches matched} in order
@@ -40,15 +38,16 @@ import org.springframework.core.type.AnnotationMetadata;
  * @see Conditional
  * @see ConditionContext
  */
+@FunctionalInterface
 public interface Condition {
 
 	/**
 	 * Determine if the condition matches.
 	 * @param context the condition context
-	 * @param metadata meta-data of the {@link AnnotationMetadata class} or
-	 *        {@link MethodMethod method} being checked.
-	 * @return {@code true} if the condition matches and the component can be registered
-	 *         or {@code false} to veto registration.
+	 * @param metadata metadata of the {@link org.springframework.core.type.AnnotationMetadata class}
+	 * or {@link org.springframework.core.type.MethodMetadata method} being checked
+	 * @return {@code true} if the condition matches and the component can be registered,
+	 * or {@code false} to veto the annotated component's registration
 	 */
 	boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata);
 

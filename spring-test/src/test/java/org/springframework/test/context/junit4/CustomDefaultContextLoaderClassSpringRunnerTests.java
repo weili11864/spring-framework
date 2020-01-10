@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,27 +16,30 @@
 
 package org.springframework.test.context.junit4;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.junit.runners.model.InitializationError;
-import org.springframework.tests.sample.beans.Pet;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.testfixture.beans.Pet;
+import org.springframework.test.context.BootstrapWith;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.ContextLoader;
+import org.springframework.test.context.support.DefaultTestContextBootstrapper;
 import org.springframework.test.context.support.GenericPropertiesContextLoader;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 /**
- * Integration tests which verify that a subclass of {@link SpringJUnit4ClassRunner}
- * can specify a custom <em>default ContextLoader class name</em> that overrides
- * the standard default class name.
+ * Integration tests which verify that a subclass of {@link DefaultTestContextBootstrapper}
+ * can specify a custom <em>default ContextLoader class</em> that overrides the standard
+ * default class name.
  *
  * @author Sam Brannen
  * @since 3.0
  */
-@RunWith(CustomDefaultContextLoaderClassSpringRunnerTests.PropertiesBasedSpringJUnit4ClassRunner.class)
-@ContextConfiguration(locations = "PropertiesBasedSpringJUnit4ClassRunnerAppCtxTests-context.properties")
+@RunWith(SpringRunner.class)
+@BootstrapWith(CustomDefaultContextLoaderClassSpringRunnerTests.PropertiesBasedTestContextBootstrapper.class)
+@ContextConfiguration("PropertiesBasedSpringJUnit4ClassRunnerAppCtxTests-context.properties")
 public class CustomDefaultContextLoaderClassSpringRunnerTests {
 
 	@Autowired
@@ -48,24 +51,20 @@ public class CustomDefaultContextLoaderClassSpringRunnerTests {
 
 	@Test
 	public void verifyAnnotationAutowiredFields() {
-		assertNotNull("The cat field should have been autowired.", this.cat);
-		assertEquals("Garfield", this.cat.getName());
+		assertThat(this.cat).as("The cat field should have been autowired.").isNotNull();
+		assertThat(this.cat.getName()).isEqualTo("Garfield");
 
-		assertNotNull("The testString field should have been autowired.", this.testString);
-		assertEquals("Test String", this.testString);
+		assertThat(this.testString).as("The testString field should have been autowired.").isNotNull();
+		assertThat(this.testString).isEqualTo("Test String");
 	}
 
 
-	public static final class PropertiesBasedSpringJUnit4ClassRunner extends SpringJUnit4ClassRunner {
-
-		public PropertiesBasedSpringJUnit4ClassRunner(Class<?> clazz) throws InitializationError {
-			super(clazz);
-		}
+	public static class PropertiesBasedTestContextBootstrapper extends DefaultTestContextBootstrapper {
 
 		@Override
-		protected String getDefaultContextLoaderClassName(Class<?> clazz) {
-			return GenericPropertiesContextLoader.class.getName();
+		protected Class<? extends ContextLoader> getDefaultContextLoaderClass(Class<?> testClass) {
+			return GenericPropertiesContextLoader.class;
 		}
-
 	}
+
 }

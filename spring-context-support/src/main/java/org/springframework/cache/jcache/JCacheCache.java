@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,85 +16,99 @@
 
 package org.springframework.cache.jcache;
 
-import java.io.Serializable;
+import java.util.concurrent.Callable;
 
-import javax.cache.Status;
+import javax.cache.Cache;
+import javax.cache.processor.EntryProcessor;
+import javax.cache.processor.EntryProcessorException;
+import javax.cache.processor.MutableEntry;
 
-import org.springframework.cache.Cache;
-import org.springframework.cache.support.SimpleValueWrapper;
+import org.springframework.cache.support.AbstractValueAdaptingCache;
+import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 /**
  * {@link org.springframework.cache.Cache} implementation on top of a
- * {@link javax.cache.Cache} instance.
+ * {@link Cache javax.cache.Cache} instance.
+ *
+ * <p>Note: This class has been updated for JCache 1.0, as of Spring 4.0.
  *
  * @author Juergen Hoeller
+ * @author Stephane Nicoll
  * @since 3.2
  */
-public class JCacheCache implements Cache {
+public class JCacheCache extends AbstractValueAdaptingCache {
 
-	private static final Object NULL_HOLDER = new NullHolder();
-
-	@SuppressWarnings("rawtypes")
-	private final javax.cache.Cache cache;
-
-	private final boolean allowNullValues;
+	private final Cache<Object, Object> cache;
 
 
 	/**
-	 * Create an {@link org.springframework.cache.jcache.JCacheCache} instance.
+	 * Create a {@code JCacheCache} instance.
 	 * @param jcache backing JCache Cache instance
 	 */
-	public JCacheCache(javax.cache.Cache<?,?> jcache) {
+	public JCacheCache(Cache<Object, Object> jcache) {
 		this(jcache, true);
 	}
 
 	/**
-	 * Create an {@link org.springframework.cache.jcache.JCacheCache} instance.
+	 * Create a {@code JCacheCache} instance.
 	 * @param jcache backing JCache Cache instance
 	 * @param allowNullValues whether to accept and convert null values for this cache
 	 */
-	public JCacheCache(javax.cache.Cache<?,?> jcache, boolean allowNullValues) {
+	public JCacheCache(Cache<Object, Object> jcache, boolean allowNullValues) {
+		super(allowNullValues);
 		Assert.notNull(jcache, "Cache must not be null");
-		Status status = jcache.getStatus();
-		Assert.isTrue(Status.STARTED.equals(status),
-				"A 'started' cache is required - current cache is " + status.toString());
 		this.cache = jcache;
-		this.allowNullValues = allowNullValues;
 	}
 
 
 	@Override
-	public String getName() {
+	public final String getName() {
 		return this.cache.getName();
 	}
 
 	@Override
-	public javax.cache.Cache<?,?> getNativeCache() {
+	public final Cache<Object, Object> getNativeCache() {
 		return this.cache;
 	}
 
-	public boolean isAllowNullValues() {
-		return this.allowNullValues;
+	@Override
+	@Nullable
+	protected Object lookup(Object key) {
+		return this.cache.get(key);
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	public ValueWrapper get(Object key) {
-		Object value = this.cache.get(key);
-		return (value != null ? new SimpleValueWrapper(fromStoreValue(value)) : null);
+	@Nullable
+	public <T> T get(Object key, Callable<T> valueLoader) {
+		try {
+			return this.cache.invoke(key, new ValueLoaderEntryProcessor<T>(), valueLoader);
+		}
+		catch (EntryProcessorException ex) {
+			throw new ValueRetrievalException(key, valueLoader, ex.getCause());
+		}
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
-	public void put(Object key, Object value) {
+	public void put(Object key, @Nullable Object value) {
 		this.cache.put(key, toStoreValue(value));
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
+	@Nullable
+	public ValueWrapper putIfAbsent(Object key, @Nullable Object value) {
+		boolean set = this.cache.putIfAbsent(key, toStoreValue(value));
+		return (set ? null : get(key));
+	}
+
+	@Override
 	public void evict(Object key) {
 		this.cache.remove(key);
+	}
+
+	@Override
+	public boolean evictIfPresent(Object key) {
+		return this.cache.remove(key);
 	}
 
 	@Override
@@ -102,36 +116,37 @@ public class JCacheCache implements Cache {
 		this.cache.removeAll();
 	}
 
-
-	/**
-	 * Convert the given value from the internal store to a user value
-	 * returned from the get method (adapting {@code null}).
-	 * @param storeValue the store value
-	 * @return the value to return to the user
-	 */
-	protected Object fromStoreValue(Object storeValue) {
-		if (this.allowNullValues && storeValue == NULL_HOLDER) {
-			return null;
-		}
-		return storeValue;
-	}
-
-	/**
-	 * Convert the given user value, as passed into the put method,
-	 * to a value in the internal store (adapting {@code null}).
-	 * @param userValue the given user value
-	 * @return the value to store
-	 */
-	protected Object toStoreValue(Object userValue) {
-		if (this.allowNullValues && userValue == null) {
-			return NULL_HOLDER;
-		}
-		return userValue;
+	@Override
+	public boolean invalidate() {
+		boolean notEmpty = this.cache.iterator().hasNext();
+		this.cache.removeAll();
+		return notEmpty;
 	}
 
 
-	@SuppressWarnings("serial")
-	private static class NullHolder implements Serializable {
+	private class ValueLoaderEntryProcessor<T> implements EntryProcessor<Object, Object, T> {
+
+		@SuppressWarnings("unchecked")
+		@Override
+		@Nullable
+		public T process(MutableEntry<Object, Object> entry, Object... arguments) throws EntryProcessorException {
+			Callable<T> valueLoader = (Callable<T>) arguments[0];
+			if (entry.exists()) {
+				return (T) fromStoreValue(entry.getValue());
+			}
+			else {
+				T value;
+				try {
+					value = valueLoader.call();
+				}
+				catch (Exception ex) {
+					throw new EntryProcessorException("Value loader '" + valueLoader + "' failed " +
+							"to compute value for key '" + entry.getKey() + "'", ex);
+				}
+				entry.setValue(toStoreValue(value));
+				return value;
+			}
+		}
 	}
 
 }
